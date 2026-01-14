@@ -13,7 +13,7 @@ const (
 	PositionDefender   PlayerPosition = "defender"   // Зщ
 )
 
-func (p PlayerPosition) String() string {
+func (p PlayerPosition) ToString() string {
 	switch p {
 	case PositionGoalkeeper:
 		return "Вр"

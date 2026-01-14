@@ -51,7 +51,7 @@ func showPlayersList(st storage.Storage, chatID int64, userID int64, messageID i
 		replyMsg.Text = fmt.Sprintf("Игроки команды %s\n\n", team.Name)
 
 		for i, player := range players {
-			replyMsg.Text += fmt.Sprintf("%d. %s %s\n", i+1, player.FullName, player.Position)
+			replyMsg.Text += fmt.Sprintf("%d. %s %s\n", i+1, player.FullName, player.Position.ToString())
 		}
 	}
 
