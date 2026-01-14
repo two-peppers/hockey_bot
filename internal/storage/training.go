@@ -15,7 +15,11 @@ func (s *gormStorage) CreateTraining(training *domain.Training) error {
 func (s *gormStorage) GetTrainingByID(id string) (*domain.Training, error) {
 	var training domain.Training
 	err := s.db.
-		Preload("Players").
+		Preload("Players", func(db *gorm.DB) *gorm.DB {
+			return db.Joins("JOIN training_players tp ON tp.player_id = players.id").
+				Where("tp.training_id = ?", training.ID).
+				Order("tp.created_at ASC")
+		}).
 		Preload("Team").
 		Where("id = ?", id).
 		First(&training).Error

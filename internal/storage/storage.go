@@ -56,7 +56,7 @@ func NewGORM(dbPath string) Storage {
 
 	// Автомиграция - создает/обновляет таблицы
 	// Пока пусто - добавим модели в domain и вызовем здесь
-	err = db.AutoMigrate(&domain.Team{}, &domain.Player{}, &domain.Training{})
+	err = db.AutoMigrate(&domain.Team{}, &domain.Player{}, &domain.Training{}, &domain.TrainingPlayer{})
 	if err != nil {
 		log.Fatalf("failed to auto-migrate: %v", err)
 	}

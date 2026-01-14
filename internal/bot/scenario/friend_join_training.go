@@ -88,7 +88,7 @@ func checkFriendName(st storage.Storage, chatID int64, userID int64, messageID i
 	player.FullName = data.Get("message")
 	player.TeamID = training.TeamID
 	saveGlobalUserPlayer(userID, *player)
-	//user_state.AddToMessageBuffer(chatID, userID, messageID)
+	user_state.AddToMessageBuffer(chatID, userID, messageID)
 	user_state.SetUserState(userID, chatID, "frgo_tr:2")
 
 	return askFriendPosition(st, chatID, userID, messageID, data)

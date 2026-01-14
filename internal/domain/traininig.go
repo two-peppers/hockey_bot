@@ -47,8 +47,9 @@ type Training struct {
 
 // Связующая таблица (GORM создаст автоматически)
 type TrainingPlayer struct {
-	TrainingID string `gorm:"primaryKey"`
-	PlayerID   string `gorm:"primaryKey"`
+	TrainingID string    `gorm:"primaryKey"`
+	PlayerID   string    `gorm:"primaryKey"`
+	CreatedAt  time.Time `gorm:"autoCreateTime"`
 }
 
 func (t *Training) String() string {
