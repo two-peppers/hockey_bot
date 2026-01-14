@@ -5,7 +5,6 @@ import (
 	"hockey_bot/internal/bot/keyboards"
 	"hockey_bot/internal/bot/scenario"
 	"hockey_bot/internal/bot/user_state"
-	"hockey_bot/internal/domain"
 	"hockey_bot/internal/storage"
 	"log"
 	"strings"
@@ -13,7 +12,6 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
-var globalUserPlayer = make(map[int64]domain.Player)
 var globalMessagesToDelete = make(map[int64][]int)
 
 func addMessageToDelete(userID int64, messageID int) {
@@ -86,6 +84,8 @@ func handleMessage(bot *tgbotapi.BotAPI, msg tgbotapi.Message, store storage.Sto
 	// Только команда /start пока
 	if strings.HasPrefix(text, "/start") {
 		if chatID < 0 {
+			delMsg := tgbotapi.NewDeleteMessage(chatID, messageID)
+			bot.Send(delMsg)
 			return
 		}
 		msg := tgbotapi.NewMessage(chatID, "Рад тебя видеть! Это главное меню бота\n\nВыбери действие:")
@@ -94,6 +94,17 @@ func handleMessage(bot *tgbotapi.BotAPI, msg tgbotapi.Message, store storage.Sto
 			log.Printf("error sending message: %v", err)
 		}
 		return
+	}
+
+	userName := msg.From.UserName
+	if len(userName) == 0 {
+		userName = msg.From.FirstName
+	}
+	if len(userName) == 0 {
+		userName = msg.From.LastName
+	}
+	if len(userName) == 0 {
+		userName = "Друг"
 	}
 
 	executeRoute(bot, store, chatID, senderID, messageID, msg.From.UserName, text)
