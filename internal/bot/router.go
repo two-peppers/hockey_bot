@@ -82,6 +82,7 @@ func executeRoute(bot *tgbotapi.BotAPI, store storage.Storage, chatID int64, use
 
 	if len(action.TemporaryReply) > 0 {
 		for _, reply := range action.TemporaryReply {
+			reply.DisableNotification = true
 			sentMsg, err := bot.Send(reply)
 			if err == nil {
 				state.AddToMessageBuffer(chatID, userID, sentMsg.MessageID)
