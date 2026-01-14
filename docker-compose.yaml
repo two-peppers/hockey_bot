@@ -1,0 +1,11 @@
+services:
+  hockey-bot:
+    build: .
+    container_name: hockey_bot
+    restart: unless-stopped
+    env_file:
+      - .env  # TELEGRAM_APITOKEN, DB_PATH=./hockey_bot.db
+    volumes:
+      - ./data:/app/data  # Маунт БД
+    environment:
+      - TZ=Europe/Moscow  # Локальное время
