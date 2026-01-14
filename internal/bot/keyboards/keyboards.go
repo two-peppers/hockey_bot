@@ -15,9 +15,9 @@ func MainMenuKeyboard() tgbotapi.InlineKeyboardMarkup {
 			tgbotapi.NewInlineKeyboardButtonData("🏒 Создать команду", "create_team:0"),
 		),
 		// Вторая строка - "Присоединиться к команде"
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("👥 Присоединиться к команде", "join_team:0"),
-		),
+		//tgbotapi.NewInlineKeyboardRow(
+		//	tgbotapi.NewInlineKeyboardButtonData("👥 Присоединиться к команде", "join_team:0"),
+		//),
 		// Третья строка - "Управлять командой"
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("⚙️ Управлять командой", "manage_team:0"),
