@@ -7,6 +7,7 @@ import (
 	"hockey_bot/internal/bot/user_state"
 	"hockey_bot/internal/domain"
 	"hockey_bot/internal/storage"
+	"unicode/utf8"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/google/uuid"
@@ -67,6 +68,7 @@ func askPlayerName(st storage.Storage, chatID int64, userID int64, messageID int
 }
 
 func checkPlayerName(st storage.Storage, chatID int64, userID int64, messageID int, data Data) (*Action, error) {
+	user_state.AddToMessageBuffer(chatID, userID, messageID)
 	player, err := getGlobalUserPlayer(userID)
 
 	if err != nil || player == nil {
@@ -82,10 +84,21 @@ func checkPlayerName(st storage.Storage, chatID int64, userID int64, messageID i
 		return nil, err
 	}
 
-	player.FullName = data.Get("message")
+	fullName := data.Get("message")
+	if utf8.RuneCountInString(fullName) > 32 {
+		res := NewAction()
+		replyMsg := tgbotapi.NewMessage(chatID, "🤔 Не похоже, что это твоя фамилия, очень длинная. Давай ещё раз попробуем")
+		replyMsg.ParseMode = tgbotapi.ModeMarkdown
+		replyMsg.ReplyToMessageID = messageID
+
+		res.AddTemporaryReply(&replyMsg)
+
+		return res, nil
+	}
+
+	player.FullName = fullName
 	player.TeamID = training.TeamID
 	saveGlobalUserPlayer(userID, *player)
-	user_state.AddToMessageBuffer(chatID, userID, messageID)
 	user_state.SetUserState(userID, chatID, "go_tr:2")
 
 	return askPlayerPosition(st, chatID, userID, messageID, data)
