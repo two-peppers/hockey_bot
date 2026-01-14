@@ -121,7 +121,18 @@ func handleCallback(bot *tgbotapi.BotAPI, callback tgbotapi.CallbackQuery, store
 
 	user_state.SetUserState(senderID, chatID, data)
 
-	executeRoute(bot, store, chatID, senderID, messageID, callback.From.UserName, "")
+	userName := callback.From.UserName
+	if len(userName) == 0 {
+		userName = callback.From.FirstName
+	}
+	if len(userName) == 0 {
+		userName = callback.From.LastName
+	}
+	if len(userName) == 0 {
+		userName = "Друг"
+	}
+
+	executeRoute(bot, store, chatID, senderID, messageID, userName, "")
 
 	// Подтверждаем получение callback (убирает hourglass)
 	answer := tgbotapi.NewCallback(callback.ID, "")
