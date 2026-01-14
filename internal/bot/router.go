@@ -73,6 +73,7 @@ func executeRoute(bot *tgbotapi.BotAPI, store storage.Storage, chatID int64, use
 
 	if len(action.Reply) > 0 {
 		for _, reply := range action.Reply {
+			reply.DisableNotification = true
 			_, err := bot.Send(reply)
 			if err != nil {
 				log.Printf("error sending reply: %v", err)
