@@ -54,6 +54,13 @@ func askTrainingDate(st storage.Storage, chatID int64, userID int64, messageID i
 		return nil, err
 	}
 
+	if team.ChatID == nil {
+		errMsg := tgbotapi.NewMessage(chatID, "Перед созданием тренировки необходимо добавить бота в чат команды")
+		res.AddReply(&errMsg)
+		user_state.ClearUserState(userID, chatID)
+		return res, nil
+	}
+
 	training := domain.Training{
 		ID:     uuid.New().String(),
 		TeamID: team.ID,

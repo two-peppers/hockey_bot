@@ -65,11 +65,13 @@ func (t *Training) String() string {
 		"Суббота",
 	}
 
-	for i, player := range t.Players {
+	fpc := 0
+	for _, player := range t.Players {
 		if player.Position == PositionGoalkeeper {
 			goalkeepers = append(goalkeepers, fmt.Sprintf("#вратарь %s", player.FullName))
 		} else {
-			players = append(players, fmt.Sprintf("%d. %s", i+1, player.FullName))
+			fpc++
+			players = append(players, fmt.Sprintf("%d. %s", fpc, player.FullName))
 		}
 	}
 
