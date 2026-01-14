@@ -69,7 +69,7 @@ func askTrainingDate(st storage.Storage, chatID int64, userID int64, messageID i
 	res.AddReply(&replyMsg)
 	res.AddDelete(&deleteMsg)
 
-	user_state.SetUserState(userID, "train:1")
+	user_state.SetUserState(userID, chatID, "train:1")
 
 	saveGlobalUserTraining(userID, training)
 
@@ -119,7 +119,7 @@ func checkTrainingDate(st storage.Storage, chatID int64, userID int64, messageID
 		training.Date = date
 	}
 
-	user_state.SetUserState(userID, "train:4") // Спрашиваем про время тренировки
+	user_state.SetUserState(userID, chatID, "train:4") // Спрашиваем про время тренировки
 	saveGlobalUserTraining(userID, *training)
 
 	return askTrainingTime(st, chatID, userID, messageID, data)
@@ -144,7 +144,7 @@ func checkExactTrainingDate(st storage.Storage, chatID int64, userID int64, mess
 	replyMsg.ParseMode = tgbotapi.ModeMarkdown
 
 	if err != nil {
-		user_state.SetUserState(userID, "train:3")
+		user_state.SetUserState(userID, chatID, "train:3")
 		replyMsg.Text = "Некоррктный формат даты. Попробуй еще раз: ДД.ММ.ГГГГ"
 		res.AddReply(&replyMsg)
 
@@ -154,13 +154,13 @@ func checkExactTrainingDate(st storage.Storage, chatID int64, userID int64, mess
 	training, err := getGlobalUserTraining(userID)
 
 	if err != nil {
-		user_state.SetUserState(userID, "train:0")
+		user_state.SetUserState(userID, chatID, "train:0")
 		return askExactTrainingDate(st, chatID, userID, messageID, data)
 	}
 
 	training.Date = date
 	saveGlobalUserTraining(userID, *training)
-	user_state.SetUserState(userID, "train:5") // Переходим к времени тренировки
+	user_state.SetUserState(userID, chatID, "train:5") // Переходим к времени тренировки
 
 	return askTrainingTime(st, chatID, userID, messageID, data)
 }
@@ -174,7 +174,7 @@ func askTrainingTime(st storage.Storage, chatID int64, userID int64, messageID i
 
 	res.AddReply(&replyMsg)
 
-	user_state.SetUserState(userID, "train:5")
+	user_state.SetUserState(userID, chatID, "train:5")
 
 	return res, nil
 }
@@ -211,7 +211,7 @@ func checkTrainingTime(st storage.Storage, chatID int64, userID int64, messageID
 	training.Date = training.Date.Add(time.Duration(hours) * time.Hour).Add(time.Duration(minutes) * time.Minute)
 	saveGlobalUserTraining(userID, *training)
 
-	user_state.SetUserState(userID, "train:6") // Спрашиваем про арену
+	user_state.SetUserState(userID, chatID, "train:6") // Спрашиваем про арену
 
 	return askTrainingVenue(st, chatID, userID, messageID, data)
 }
@@ -235,7 +235,7 @@ func askTrainingVenue(st storage.Storage, chatID int64, userID int64, messageID 
 
 	res.AddReply(&replyMsg)
 
-	user_state.SetUserState(userID, "train:7")
+	user_state.SetUserState(userID, chatID, "train:7")
 
 	return res, nil
 }
@@ -264,7 +264,7 @@ func askTrainingFormat(st storage.Storage, chatID int64, userID int64, messageID
 
 	res.AddReply(&replyMsg)
 
-	user_state.SetUserState(userID, "train:9")
+	user_state.SetUserState(userID, chatID, "train:9")
 
 	return res, nil
 }
@@ -301,7 +301,7 @@ func askTrainingCapacity(st storage.Storage, chatID int64, userID int64, message
 
 	res.AddReply(&replyMsg)
 
-	user_state.SetUserState(userID, "train:11")
+	user_state.SetUserState(userID, chatID, "train:11")
 
 	return res, nil
 }
@@ -347,18 +347,17 @@ func askTrainingBottomMessage(st storage.Storage, chatID int64, userID int64, me
 	replyMsg2.ReplyMarkup = keyboards.TrainingNoMessageKeyboard()
 	res.AddReply(&replyMsg2)
 
-	user_state.SetUserState(userID, "train:13")
+	user_state.SetUserState(userID, chatID, "train:13")
 
 	return res, nil
 }
 
 func checkTrainingBottomMessageAndCreateTraining(st storage.Storage, chatID int64, userID int64, messageID int, data Data) (*Action, error) {
 	defer clearGlobalUserTraining(userID)
-	defer user_state.ClearUserState(userID)
+	defer user_state.ClearUserState(userID, chatID)
 
 	training, err := getGlobalUserTraining(userID)
 	if err != nil {
-		user_state.ClearUserState(userID)
 		return nil, err
 	}
 

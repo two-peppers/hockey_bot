@@ -53,11 +53,11 @@ func askFriendNameForCancel(st storage.Storage, chatID int64, userID int64, mess
 		return nil, errors.New("no friends in training")
 	}
 
-	replyMsg := tgbotapi.NewMessage(chatID, "Какой друг не сможет пойти?")
+	replyMsg := tgbotapi.NewMessage(chatID, fmt.Sprintf("[%s](tg://user?id=%d), какой друг не сможет пойти?", data.Get("username"), userID))
 	replyMsg.ParseMode = tgbotapi.ModeMarkdown
 	replyMsg.ReplyMarkup = keyboards.FriendsKeyboard("frnogo", "tr", 1, friendsInTraining)
 
-	user_state.SetUserState(userID, "frnogo:1")
+	user_state.SetUserState(userID, chatID, "frnogo:1")
 
 	res := NewAction()
 	res.AddTemporaryReply(&replyMsg)
@@ -85,7 +85,7 @@ func confirmFriendCancelTraining(st storage.Storage, chatID int64, userID int64,
 	res.AddEdit(&editMsg)
 	res.FlushTemporary = true
 
-	user_state.ClearUserState(userID)
+	user_state.ClearUserState(userID, chatID)
 
 	return res, nil
 }

@@ -33,7 +33,7 @@ func NewCreateTeam() *CreateTeam {
 
 // askTeamName спрашивает название команды
 func askTeamName(st storage.Storage, chatID int64, userID int64, messageID int, data Data) (*Action, error) {
-	state.SetUserState(userID, fmt.Sprintf("create_team:%d", 1))
+	state.SetUserState(userID, chatID, fmt.Sprintf("create_team:%d", 1))
 
 	edit := tgbotapi.NewEditMessageText(chatID, messageID, "📝 Как называется команда?")
 	edit.ParseMode = tgbotapi.ModeMarkdown
@@ -46,7 +46,7 @@ func askTeamName(st storage.Storage, chatID int64, userID int64, messageID int, 
 
 // createTeamWithName создает команду по переданному названию
 func createTeamWithName(st storage.Storage, chatID int64, userID int64, messageID int, data Data) (*Action, error) {
-	defer state.ClearUserState(userID)
+	defer state.ClearUserState(userID, chatID)
 
 	name := data["message"]
 	res := NewAction()

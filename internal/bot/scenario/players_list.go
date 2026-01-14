@@ -61,7 +61,7 @@ func showPlayersList(st storage.Storage, chatID int64, userID int64, messageID i
 
 	res.AddReply(&replyMsg)
 	res.AddDelete(&deleteMsg)
-	user_state.ClearUserState(userID)
+	user_state.ClearUserState(userID, chatID)
 
 	return res, nil
 }

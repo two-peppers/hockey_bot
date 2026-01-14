@@ -54,7 +54,7 @@ func askFriendName(st storage.Storage, chatID int64, userID int64, messageID int
 
 	res := NewAction()
 
-	replyMsg := tgbotapi.NewMessage(chatID, "👤 Как зовут друга?")
+	replyMsg := tgbotapi.NewMessage(chatID, fmt.Sprintf("👤 [%s](tg://user?id=%d), как фамилия друга?", data.Get("username"), userID))
 	replyMsg.ParseMode = tgbotapi.ModeMarkdown
 
 	if len(friends) > 0 {
@@ -64,7 +64,7 @@ func askFriendName(st storage.Storage, chatID int64, userID int64, messageID int
 
 	res.AddTemporaryReply(&replyMsg)
 
-	user_state.SetUserState(userID, "frgo_tr:1")
+	user_state.SetUserState(userID, chatID, "frgo_tr:1")
 
 	return res, nil
 }
@@ -88,8 +88,8 @@ func checkFriendName(st storage.Storage, chatID int64, userID int64, messageID i
 	player.FullName = data.Get("message")
 	player.TeamID = training.TeamID
 	saveGlobalUserPlayer(userID, *player)
-	user_state.AddToMessageBuffer(chatID, userID, messageID)
-	user_state.SetUserState(userID, "frgo_tr:2")
+	//user_state.AddToMessageBuffer(chatID, userID, messageID)
+	user_state.SetUserState(userID, chatID, "frgo_tr:2")
 
 	return askFriendPosition(st, chatID, userID, messageID, data)
 }
@@ -98,13 +98,13 @@ func askFriendPosition(st storage.Storage, chatID int64, userID int64, messageID
 	player, err := getGlobalUserPlayer(userID)
 
 	if err != nil {
-		user_state.ClearUserState(userID)
+		user_state.ClearUserState(userID, chatID)
 		return nil, err
 	}
 
 	res := NewAction()
 
-	replyMsg := tgbotapi.NewMessage(chatID, fmt.Sprintf("🎯 %s на какой позиции играет?", player.FullName))
+	replyMsg := tgbotapi.NewMessage(chatID, fmt.Sprintf("🎯 На какой позиции играет %s?", player.FullName))
 	replyMsg.ParseMode = tgbotapi.ModeMarkdown
 	replyMsg.ReplyMarkup = keyboards.PlayerPositionKeyboard("frgo_tr:3")
 
@@ -117,7 +117,7 @@ func checkFriendPosition(st storage.Storage, chatID int64, userID int64, message
 	player, err := getGlobalUserPlayer(userID)
 
 	if err != nil {
-		user_state.ClearUserState(userID)
+		user_state.ClearUserState(userID, chatID)
 		return nil, err
 	}
 
@@ -128,19 +128,19 @@ func checkFriendPosition(st storage.Storage, chatID int64, userID int64, message
 
 	if err != nil {
 
-		user_state.ClearUserState(userID)
+		user_state.ClearUserState(userID, chatID)
 		return nil, err
 	}
 
 	trainingMessageID, ok := userContextMessage[userID]
 	if !ok {
-		user_state.ClearUserState(userID)
+		user_state.ClearUserState(userID, chatID)
 		return nil, errors.New("trainingID not found")
 	}
 
 	trainingID, ok := userFriendTrainingID[userID]
 	if !ok {
-		user_state.ClearUserState(userID)
+		user_state.ClearUserState(userID, chatID)
 		return nil, errors.New("trainingID not found")
 	}
 
@@ -165,14 +165,14 @@ func confirmFriendJoinTraining(st storage.Storage, chatID int64, userID int64, m
 
 	training, err := st.GetTrainingByID(trainingID)
 	if err != nil {
-		user_state.ClearUserState(userID)
+		user_state.ClearUserState(userID, chatID)
 		return nil, err
 	}
 
 	player, err := st.GetPlayerByID(data.Get("id"))
 
 	if err != nil {
-		user_state.ClearUserState(userID)
+		user_state.ClearUserState(userID, chatID)
 		return nil, err
 	}
 
@@ -195,7 +195,7 @@ func confirmFriendJoinTraining(st storage.Storage, chatID int64, userID int64, m
 
 	delete(userContextMessage, userID)
 	delete(userFriendTrainingID, userID)
-	user_state.ClearUserState(userID)
+	user_state.ClearUserState(userID, chatID)
 	clearGlobalUserPlayer(userID)
 
 	return res, nil

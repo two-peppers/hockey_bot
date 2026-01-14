@@ -45,7 +45,7 @@ func showTeams(st storage.Storage, chatID int64, userID int64, messageID int, da
 
 	if len(teams) == 0 {
 		reply.Text = "У тебя ещё нет своей команды. Для начала надо её создать."
-		user_state.ClearUserState(userID)
+		user_state.ClearUserState(userID, chatID)
 	} else if len(teams) == 1 {
 		data = map[string]string{
 			"team_id": teams[0].ID,

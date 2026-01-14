@@ -70,7 +70,7 @@ func handleMessage(bot *tgbotapi.BotAPI, msg tgbotapi.Message, store storage.Sto
 
 	// Бота добавили в чат
 	if scenario.IsBotAddedToChat(&msg) {
-		user_state.SetUserState(senderID, "add_chat:0")
+		user_state.SetUserState(senderID, chatID, "add_chat:0")
 	}
 
 	if msg.MigrateToChatID != 0 {
@@ -96,7 +96,7 @@ func handleMessage(bot *tgbotapi.BotAPI, msg tgbotapi.Message, store storage.Sto
 		return
 	}
 
-	executeRoute(bot, store, chatID, senderID, messageID, text)
+	executeRoute(bot, store, chatID, senderID, messageID, msg.From.UserName, text)
 }
 
 // handleCallback обрабатывает нажатия inline кнопок
@@ -108,9 +108,9 @@ func handleCallback(bot *tgbotapi.BotAPI, callback tgbotapi.CallbackQuery, store
 
 	log.Printf("Callback from %d in chat %d: %s", senderID, chatID, data)
 
-	user_state.SetUserState(senderID, data)
+	user_state.SetUserState(senderID, chatID, data)
 
-	executeRoute(bot, store, chatID, senderID, messageID, "")
+	executeRoute(bot, store, chatID, senderID, messageID, callback.From.UserName, "")
 
 	// Подтверждаем получение callback (убирает hourglass)
 	answer := tgbotapi.NewCallback(callback.ID, "")

@@ -68,7 +68,7 @@ func askAdminNameForSet(st storage.Storage, chatID int64, userID int64, messageI
 }
 
 func setAdmin(st storage.Storage, chatID int64, userID int64, messageID int, data Data) (*Action, error) {
-	defer user_state.ClearUserState(userID)
+	defer user_state.ClearUserState(userID, chatID)
 
 	teamID, ok := localTrainingID[userID]
 	if !ok {
