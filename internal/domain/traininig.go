@@ -13,6 +13,7 @@ const (
 	TrainingTechnical TrainingType = "technical" // Техническая
 	TrainingShooting  TrainingType = "shooting"  // Бросковая
 	TrainingChecking  TrainingType = "checking"  // Подкатка
+	TrainingMatch     TrainingType = "match"     // Игра в федерации
 )
 
 func (t TrainingType) ToString() string {
@@ -20,11 +21,13 @@ func (t TrainingType) ToString() string {
 	case TrainingGaming:
 		return "Игровая"
 	case TrainingTechnical:
-		return "Техническая"
+		return "Тренировка"
 	case TrainingShooting:
-		return "Бросковая"
+		return "Броски на сухом льду"
 	case TrainingChecking:
 		return "Подкатка"
+	case TrainingMatch:
+		return "Игра на федерацию"
 	default:
 		return "Неизвестно"
 	}
@@ -45,7 +48,7 @@ type Training struct {
 	UpdatedAt      time.Time    `gorm:"autoUpdateTime" json:"updated_at"`
 }
 
-// Связующая таблица (GORM создаст автоматически)
+// TrainingPlayer Связующая таблица (GORM создаст автоматически)
 type TrainingPlayer struct {
 	TrainingID string    `gorm:"primaryKey"`
 	PlayerID   string    `gorm:"primaryKey"`
@@ -90,7 +93,7 @@ func (t *Training) String() string {
 
 	message := t.Date.Format("02.01") + "\n" +
 		weekdays[t.Date.Weekday()] + "\n" +
-		"Тренировка " + t.Type.ToString() + "\n\n" +
+		t.Type.ToString() + "\n\n" +
 		"⏰ " + t.Date.Format("15:04") + "\n" +
 		"📍 " + t.Venue + "\n\n"
 
