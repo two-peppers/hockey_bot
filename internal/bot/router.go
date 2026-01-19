@@ -20,6 +20,7 @@ func getScenario(scenarioID string) (scenario.Scenario, error) {
 		"create_team": scenario.NewCreateTeam(),
 		"manage_team": scenario.NewManageTeam(),
 		"train":       scenario.NewScheduleTraining(),
+		"game":        scenario.NewScheduleGame(),
 		"go_tr":       scenario.NewJoinTraining(),
 		"nogo_tr":     scenario.NewCancelJoinTraining(),
 		"frgo_tr":     scenario.NewFriendJoinTraining(),

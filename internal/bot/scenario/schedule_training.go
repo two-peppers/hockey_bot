@@ -132,6 +132,7 @@ func checkTrainingDate(st storage.Storage, chatID int64, userID int64, messageID
 	return askTrainingTime(st, chatID, userID, messageID, data)
 }
 
+// Deprecated: точная дата спрашивается вместе с клавиатурой
 func askExactTrainingDate(st storage.Storage, chatID int64, userID int64, messageID int, data Data) (*Action, error) {
 	res := NewAction()
 	replyMsg := tgbotapi.NewMessage(chatID, "Введи дату в формате ДД.ММ.ГГГГ")
@@ -141,6 +142,7 @@ func askExactTrainingDate(st storage.Storage, chatID int64, userID int64, messag
 	return res, nil
 }
 
+// Deprecated: см. выше
 func checkExactTrainingDate(st storage.Storage, chatID int64, userID int64, messageID int, data Data) (*Action, error) {
 	res := &Action{}
 
@@ -392,6 +394,8 @@ func checkTrainingBottomMessageAndCreateTraining(st storage.Storage, chatID int6
 			"📍 Место: " + training.Venue + "\n" +
 			"👥 Участников: " + strconv.Itoa(training.Capacity) + "\n" +
 			"💬 Сообщение: " + training.Message
+		replyMsg.ParseMode = tgbotapi.ModeMarkdown
+		replyMsg.ReplyMarkup = tgbotapi.NewRemoveKeyboard(true)
 
 		chatMessage := tgbotapi.NewMessage(*training.Team.ChatID, fmt.Sprintf("%s", training))
 		chatMessage.ParseMode = tgbotapi.ModeMarkdown

@@ -93,6 +93,7 @@ func handleMessage(bot *tgbotapi.BotAPI, msg tgbotapi.Message, store storage.Sto
 		if _, err := bot.Send(msg); err != nil {
 			log.Printf("error sending message: %v", err)
 		}
+		user_state.ClearUserState(senderID, chatID)
 		return
 	}
 
