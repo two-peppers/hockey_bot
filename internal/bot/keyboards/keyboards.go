@@ -86,9 +86,9 @@ func TeamManagementKeyboard(team domain.Team) tgbotapi.InlineKeyboardMarkup {
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("📅 Запланировать тренировку", fmt.Sprintf("train:0:{\"team_id\":\"%s\"}", team.ID)),
 		),
-		//tgbotapi.NewInlineKeyboardRow(
-		//	tgbotapi.NewInlineKeyboardButtonData("⚽ Запланировать игру", fmt.Sprintf("game:0:{\"team_id\":\"%s\"}", team.ID)),
-		//),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("⚽ Запланировать игру", fmt.Sprintf("game:0:{\"team_id\":\"%s\"}", team.ID)),
+		),
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("📋 Список игроков", fmt.Sprintf("players:0:{\"id\":\"%s\"}", team.ID)),
 		),
