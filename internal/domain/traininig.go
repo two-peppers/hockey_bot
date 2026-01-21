@@ -19,7 +19,7 @@ const (
 func (t TrainingType) ToString() string {
 	switch t {
 	case TrainingGaming:
-		return "Игровая"
+		return "Тренировка игровая"
 	case TrainingTechnical:
 		return "Тренировка"
 	case TrainingShooting:
