@@ -31,6 +31,8 @@ func NewJoinTraining() *JointTraining {
 				checkPlayerName,
 				askPlayerPosition,
 				checkPlayerPosition,
+				askGoalkeeperCommercial,
+				checkGoalkeeperCommercial,
 				confirmPlayerJoin,
 			},
 		},
@@ -134,6 +136,17 @@ func checkPlayerPosition(st storage.Storage, chatID int64, userID int64, message
 	position := data.Get("position")
 	player.Position = domain.PlayerPosition(position)
 
+	trainingMessageID, ok := userTrainingMessageID[userID]
+	if !ok {
+		user_state.ClearUserState(userID, chatID)
+		return nil, errors.New("trainingID not found")
+	}
+
+	if player.Position == domain.PositionGoalkeeper {
+		saveGlobalUserPlayer(userID, *player)
+		return askGoalkeeperCommercial(st, chatID, userID, trainingMessageID, data)
+	}
+
 	err = st.CreatePlayer(player)
 
 	if err != nil {
@@ -141,10 +154,54 @@ func checkPlayerPosition(st storage.Storage, chatID int64, userID int64, message
 		return nil, err
 	}
 
+	trainingID, ok := userTrainingID[userID]
+	if !ok {
+		user_state.ClearUserState(userID, chatID)
+		return nil, errors.New("trainingID not found")
+	}
+
+	data.Set("training_id", trainingID)
+
+	return confirmPlayerJoin(st, chatID, userID, trainingMessageID, data)
+}
+
+func askGoalkeeperCommercial(st storage.Storage, chatID int64, userID int64, messageID int, data Data) (*Action, error) {
+	res := NewAction()
+
+	player, err := getGlobalUserPlayer(userID)
+	if err != nil {
+		user_state.ClearUserState(userID, chatID)
+		return nil, err
+	}
+
+	replyMsg := tgbotapi.NewMessage(chatID, fmt.Sprintf("🤑 [%s](tg://user?id=%d), за деньги играешь?", player.FullName, userID))
+	replyMsg.ParseMode = tgbotapi.ModeMarkdown
+	replyMsg.ReplyMarkup = keyboards.CommercialGoalkeeperKeyboard()
+
+	res.AddTemporaryReply(&replyMsg)
+
+	return res, nil
+}
+
+func checkGoalkeeperCommercial(st storage.Storage, chatID int64, userID int64, messageID int, data Data) (*Action, error) {
+	player, err := getGlobalUserPlayer(userID)
+	if err != nil {
+		user_state.ClearUserState(userID, chatID)
+		return nil, err
+	}
+
+	player.Commercial = data.Get("comm") == "true"
+
 	trainingMessageID, ok := userTrainingMessageID[userID]
 	if !ok {
 		user_state.ClearUserState(userID, chatID)
 		return nil, errors.New("trainingID not found")
+	}
+
+	err = st.CreatePlayer(player)
+	if err != nil {
+		user_state.ClearUserState(userID, chatID)
+		return nil, err
 	}
 
 	trainingID, ok := userTrainingID[userID]

@@ -75,7 +75,15 @@ func (t *Training) String() string {
 	fpc := 0
 	for _, player := range t.Players {
 		if player.Position == PositionGoalkeeper {
-			goalkeepers = append(goalkeepers, fmt.Sprintf("#вратарь %s", player.FullName))
+			var gkName string
+
+			if player.Commercial {
+				gkName = player.FullName + " ₽₽₽"
+			} else {
+				gkName = player.FullName
+			}
+
+			goalkeepers = append(goalkeepers, fmt.Sprintf("#вратарь %s", gkName))
 		} else {
 			fpc++
 			players = append(players, fmt.Sprintf("%d. %s", fpc, player.FullName))
