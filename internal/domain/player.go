@@ -11,6 +11,7 @@ const (
 	PositionGoalkeeper PlayerPosition = "goalkeeper" // Вр
 	PositionForward    PlayerPosition = "forward"    // Нп
 	PositionDefender   PlayerPosition = "defender"   // Зщ
+	PositionTrainer    PlayerPosition = "trainer"    // Тр
 )
 
 func (p PlayerPosition) ToString() string {
@@ -21,6 +22,8 @@ func (p PlayerPosition) ToString() string {
 		return "Нп"
 	case PositionDefender:
 		return "Зщ"
+	case PositionTrainer:
+		return "Тр"
 	default:
 		return "?"
 	}
@@ -33,5 +36,6 @@ type Player struct {
 	TelegramID int64          `gorm:"index" json:"telegram_id"`  // уникальный ID игрока
 	FullName   string         `gorm:"size:100" json:"full_name"` // "Иванов И.И."
 	Position   PlayerPosition `gorm:"type:varchar(20);index" json:"position"`
+	Commercial bool           `gorm:"type:bool" json:"commercial"` // Коммерческий игрок (только для вратарей)
 	CreatedAt  time.Time      `gorm:"autoCreateTime" json:"created_at"`
 }
