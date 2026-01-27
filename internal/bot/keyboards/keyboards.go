@@ -198,11 +198,11 @@ func FriendsKeyboard(prefix string, eventType string, step int, players []domain
 	return tgbotapi.NewInlineKeyboardMarkup(rows...)
 }
 
-func CommercialGoalkeeperKeyboard() tgbotapi.InlineKeyboardMarkup {
+func CommercialGoalkeeperKeyboard(prefix string, eventType string) tgbotapi.InlineKeyboardMarkup {
 	return tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("✅ Да", "go_tr:5:{\"comm\": \"true\"}"),
-			tgbotapi.NewInlineKeyboardButtonData("❌ Нет", "go_tr:5:{\"comm\": \"false\"}"),
+			tgbotapi.NewInlineKeyboardButtonData("✅ Да", fmt.Sprintf("%s_%s:5:{\"comm\": \"true\"}", prefix, eventType)),
+			tgbotapi.NewInlineKeyboardButtonData("❌ Нет", fmt.Sprintf("%s_%s:5:{\"comm\": \"false\"}", prefix, eventType)),
 		),
 	)
 }

@@ -176,7 +176,7 @@ func askGoalkeeperCommercial(st storage.Storage, chatID int64, userID int64, mes
 
 	replyMsg := tgbotapi.NewMessage(chatID, fmt.Sprintf("🤑 [%s](tg://user?id=%d), за деньги играешь?", player.FullName, userID))
 	replyMsg.ParseMode = tgbotapi.ModeMarkdown
-	replyMsg.ReplyMarkup = keyboards.CommercialGoalkeeperKeyboard()
+	replyMsg.ReplyMarkup = keyboards.CommercialGoalkeeperKeyboard("go", "tr")
 
 	res.AddTemporaryReply(&replyMsg)
 
