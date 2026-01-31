@@ -61,7 +61,7 @@ func askFriendName(st storage.Storage, chatID int64, userID int64, messageID int
 	replyMsg.ParseMode = tgbotapi.ModeMarkdown
 
 	if len(friends) > 0 {
-		replyMsg.ReplyMarkup = keyboards.FriendsKeyboard("frgo", "tr", 4, friends)
+		replyMsg.ReplyMarkup = keyboards.FriendsKeyboard("frgo", "tr", 6, friends)
 		replyMsg.Text += "\n\n_(можешь выбрать из списка ниже)_"
 	}
 
