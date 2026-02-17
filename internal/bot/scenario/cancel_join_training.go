@@ -1,8 +1,12 @@
 package scenario
 
 import (
+	"encoding/json"
 	"errors"
+	"fmt"
 	"hockey_bot/internal/bot/keyboards"
+	"hockey_bot/internal/bot/user_state"
+	"hockey_bot/internal/pendingreply"
 	"hockey_bot/internal/storage"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
@@ -41,6 +45,22 @@ func confirmTakePartTrainingCancel(st storage.Storage, chatID int64, userID int6
 	training.RemovePlayer(player)
 	st.SaveTraining(training)
 
+	username := data.Get("username")
+	if username == "" {
+		username = fmt.Sprintf("Игрок %d", userID)
+	}
+
+	// Готовим данные для сценария причины отмены в личном чате.
+	ctxData := make(Data)
+	ctxData.Set("training_id", training.ID)
+	ctxData.Set("team_id", training.TeamID)
+	ctxData.Set("username", username)
+
+	if raw, err := json.Marshal(ctxData); err == nil {
+		// В личном чате (chatID = userID) запускаем сценарий cancel_reason.
+		user_state.SetUserState(userID, userID, fmt.Sprintf("cancel_reason:0:%s", string(raw)))
+	}
+
 	keyboard := keyboards.TakePartKeyboard("tr", training.ID)
 	editMsg := tgbotapi.NewEditMessageText(chatID, messageID, training.String())
 	editMsg.ParseMode = tgbotapi.ModeMarkdown
@@ -48,6 +68,24 @@ func confirmTakePartTrainingCancel(st storage.Storage, chatID int64, userID int6
 
 	res := NewAction()
 	res.AddEdit(&editMsg)
+
+	reasonMsg := tgbotapi.NewMessage(
+		userID,
+		"👋 Привет! Ты отменил участие в тренировке.\n\n"+
+			"🤔 Можешь написать, почему?",
+	)
+	reasonMsg.ParseMode = tgbotapi.ModeMarkdown
+	res.AddTemporaryReply(&reasonMsg)
+
+	// Настраиваем контекст ожидания ответа для последующего трекинга.
+	res.PendingReplyContext = &pendingreply.PendingReplyContext{
+		UserID:         userID,
+		Username:       username,
+		PlayerFullName: player.FullName,
+		TrainingID:     training.ID,
+		TeamID:         training.TeamID,
+		QuestionChatID: userID,
+	}
 
 	return res, nil
 }

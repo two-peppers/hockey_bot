@@ -3,6 +3,7 @@ package scenario
 import (
 	"errors"
 	"hockey_bot/internal/domain"
+	"hockey_bot/internal/pendingreply"
 	"hockey_bot/internal/storage"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
@@ -23,24 +24,26 @@ func (d *Data) Set(key, value string) {
 }
 
 type Action struct {
-	Reply          []*tgbotapi.MessageConfig
-	Edit           []*tgbotapi.EditMessageTextConfig
-	Delete         []*tgbotapi.DeleteMessageConfig
-	Pin            []*tgbotapi.MessageConfig
-	TemporaryReply []*tgbotapi.MessageConfig
-	FlushTemporary bool
-	LeaveChat      bool
+	Reply               []*tgbotapi.MessageConfig
+	Edit                []*tgbotapi.EditMessageTextConfig
+	Delete              []*tgbotapi.DeleteMessageConfig
+	Pin                 []*tgbotapi.MessageConfig
+	TemporaryReply      []*tgbotapi.MessageConfig
+	FlushTemporary      bool
+	LeaveChat           bool
+	PendingReplyContext *pendingreply.PendingReplyContext
 }
 
 func NewAction() *Action {
 	action := Action{
-		Reply:          make([]*tgbotapi.MessageConfig, 0),
-		Edit:           make([]*tgbotapi.EditMessageTextConfig, 0),
-		Delete:         make([]*tgbotapi.DeleteMessageConfig, 0),
-		Pin:            make([]*tgbotapi.MessageConfig, 0),
-		TemporaryReply: make([]*tgbotapi.MessageConfig, 0),
-		FlushTemporary: false,
-		LeaveChat:      false,
+		Reply:               make([]*tgbotapi.MessageConfig, 0),
+		Edit:                make([]*tgbotapi.EditMessageTextConfig, 0),
+		Delete:              make([]*tgbotapi.DeleteMessageConfig, 0),
+		Pin:                 make([]*tgbotapi.MessageConfig, 0),
+		TemporaryReply:      make([]*tgbotapi.MessageConfig, 0),
+		FlushTemporary:      false,
+		LeaveChat:           false,
+		PendingReplyContext: nil,
 	}
 
 	return &action
