@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"hockey_bot/internal/bot/scenario"
 	state "hockey_bot/internal/bot/user_state"
+	"hockey_bot/internal/pendingreply"
 	"hockey_bot/internal/storage"
 	"log"
 	"strconv"
@@ -29,6 +30,7 @@ func getScenario(scenarioID string) (scenario.Scenario, error) {
 		"players":     scenario.NewPlayersList(),
 		"set_admin":   scenario.NewSetAdmin(),
 		"del_admin":   scenario.NewDelAdmin(),
+		"cancel_reason": scenario.NewCancelReason(),
 	}
 
 	if sc, exists := routeMap[scenarioID]; exists {
@@ -88,6 +90,15 @@ func executeRoute(bot *tgbotapi.BotAPI, store storage.Storage, chatID int64, use
 			sentMsg, err := bot.Send(reply)
 			if err == nil {
 				state.AddToMessageBuffer(chatID, userID, sentMsg.MessageID)
+
+				// Если для действия задан контекст ожидаемого ответа,
+				// регистрируем его с учетом фактических данных отправленного сообщения.
+				if action.PendingReplyContext != nil && reply.ChatID == action.PendingReplyContext.QuestionChatID {
+					ctx := *action.PendingReplyContext
+					ctx.QuestionChatID = sentMsg.Chat.ID
+					ctx.QuestionMessageID = sentMsg.MessageID
+					pendingreply.Register(bot, store, &ctx)
+				}
 			}
 		}
 	}
