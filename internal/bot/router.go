@@ -99,6 +99,10 @@ func executeRoute(bot *tgbotapi.BotAPI, store storage.Storage, chatID int64, use
 					ctx.QuestionMessageID = sentMsg.MessageID
 					pendingreply.Register(bot, store, &ctx)
 				}
+			} else if action.CoachNotificationOnDMFailure != nil && reply.ChatID == action.CoachNotificationOnDMFailure.QuestionChatID {
+				// Личное сообщение игроку не доставлено — уведомляем тренеров через Action.
+				log.Printf("failed to send cancel reason question to user %d: %v", reply.ChatID, err)
+				notifyCoachesCancelWithoutDM(bot, store, action.CoachNotificationOnDMFailure)
 			}
 		}
 	}
@@ -183,4 +187,38 @@ func route(userID int64, chatID int64) (string, int, scenario.Data) {
 	}
 
 	return scen, step, data
+}
+
+// notifyCoachesCancelWithoutDM отправляет тренерам уведомление, что игрок отменил тренировку,
+// но личное сообщение ему не удалось доставить (причина неизвестна).
+func notifyCoachesCancelWithoutDM(bot *tgbotapi.BotAPI, store storage.Storage, ctx *pendingreply.PendingReplyContext) {
+	if ctx == nil || ctx.TeamID == "" {
+		return
+	}
+	team, err := store.GetTeamByID(ctx.TeamID)
+	if err != nil || team == nil {
+		if err != nil {
+			log.Printf("notifyCoachesCancelWithoutDM: failed to load team %s: %v", ctx.TeamID, err)
+		}
+		return
+	}
+	name := ctx.PlayerFullName
+	if name == "" {
+		name = ctx.Username
+	}
+	if name == "" {
+		name = fmt.Sprintf("Игрок %d", ctx.UserID)
+	}
+	playerMention := fmt.Sprintf("[%s](tg://user?id=%d)", name, ctx.UserID)
+	text := fmt.Sprintf(
+		"❌ %s отменил тренировку, но я не смог написать ему в личку, поэтому причина неизвестна.",
+		playerMention,
+	)
+	for _, adminID := range team.Admins {
+		msg := tgbotapi.NewMessage(adminID, text)
+		msg.ParseMode = tgbotapi.ModeMarkdown
+		if _, err := bot.Send(msg); err != nil {
+			log.Printf("failed to notify admin %d about cancel without DM: %v", adminID, err)
+		}
+	}
 }

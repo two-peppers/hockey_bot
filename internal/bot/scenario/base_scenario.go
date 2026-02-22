@@ -24,26 +24,28 @@ func (d *Data) Set(key, value string) {
 }
 
 type Action struct {
-	Reply               []*tgbotapi.MessageConfig
-	Edit                []*tgbotapi.EditMessageTextConfig
-	Delete              []*tgbotapi.DeleteMessageConfig
-	Pin                 []*tgbotapi.MessageConfig
-	TemporaryReply      []*tgbotapi.MessageConfig
-	FlushTemporary      bool
-	LeaveChat           bool
-	PendingReplyContext *pendingreply.PendingReplyContext
+	Reply                        []*tgbotapi.MessageConfig
+	Edit                         []*tgbotapi.EditMessageTextConfig
+	Delete                       []*tgbotapi.DeleteMessageConfig
+	Pin                          []*tgbotapi.MessageConfig
+	TemporaryReply               []*tgbotapi.MessageConfig
+	FlushTemporary               bool
+	LeaveChat                    bool
+	PendingReplyContext          *pendingreply.PendingReplyContext
+	CoachNotificationOnDMFailure *pendingreply.PendingReplyContext // Уведомление тренерам при неудачной доставке личного сообщения
 }
 
 func NewAction() *Action {
 	action := Action{
-		Reply:               make([]*tgbotapi.MessageConfig, 0),
-		Edit:                make([]*tgbotapi.EditMessageTextConfig, 0),
-		Delete:              make([]*tgbotapi.DeleteMessageConfig, 0),
-		Pin:                 make([]*tgbotapi.MessageConfig, 0),
-		TemporaryReply:      make([]*tgbotapi.MessageConfig, 0),
-		FlushTemporary:      false,
-		LeaveChat:           false,
-		PendingReplyContext: nil,
+		Reply:                        make([]*tgbotapi.MessageConfig, 0),
+		Edit:                         make([]*tgbotapi.EditMessageTextConfig, 0),
+		Delete:                       make([]*tgbotapi.DeleteMessageConfig, 0),
+		Pin:                          make([]*tgbotapi.MessageConfig, 0),
+		TemporaryReply:               make([]*tgbotapi.MessageConfig, 0),
+		FlushTemporary:                false,
+		LeaveChat:                    false,
+		PendingReplyContext:          nil,
+		CoachNotificationOnDMFailure: nil,
 	}
 
 	return &action
