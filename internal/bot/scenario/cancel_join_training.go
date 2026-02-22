@@ -78,7 +78,7 @@ func confirmTakePartTrainingCancel(st storage.Storage, chatID int64, userID int6
 	res.AddTemporaryReply(&reasonMsg)
 
 	// Настраиваем контекст ожидания ответа для последующего трекинга.
-	res.PendingReplyContext = &pendingreply.PendingReplyContext{
+	ctx := &pendingreply.PendingReplyContext{
 		UserID:         userID,
 		Username:       username,
 		PlayerFullName: player.FullName,
@@ -86,6 +86,10 @@ func confirmTakePartTrainingCancel(st storage.Storage, chatID int64, userID int6
 		TeamID:         training.TeamID,
 		QuestionChatID: userID,
 	}
+	res.PendingReplyContext = ctx
+	
+	// Если личное сообщение не доставится, уведомим тренеров
+	res.CoachNotificationOnDMFailure = ctx
 
 	return res, nil
 }
