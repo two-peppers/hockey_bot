@@ -32,6 +32,7 @@ type Storage interface {
 	GetPlayersByTelegramID(teamId string, telegramID int64) ([]domain.Player, error)
 	GetPlayersByTeamID(teamId string) ([]domain.Player, error)
 	SaveTraining(training *domain.Training) error
+	GetUpcomingGames(teamID string, limit int) ([]domain.Training, error)
 }
 
 // gormStorage - конкретная реализация на GORM+SQLite

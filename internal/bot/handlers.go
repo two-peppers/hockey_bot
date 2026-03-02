@@ -133,11 +133,17 @@ func handleCallback(bot *tgbotapi.BotAPI, callback tgbotapi.CallbackQuery, store
 		userName = "Друг"
 	}
 
-	executeRoute(bot, store, chatID, senderID, messageID, userName, "")
+	action := executeRoute(bot, store, chatID, senderID, messageID, userName, "")
 
-	// Подтверждаем получение callback (убирает hourglass)
-	answer := tgbotapi.NewCallback(callback.ID, "")
-	if _, err := bot.Request(answer); err != nil {
-		log.Printf("error answering callback: %v", err)
+	if action != nil && action.CallbackAlert != "" {
+		cfg := tgbotapi.CallbackConfig{CallbackQueryID: callback.ID, Text: action.CallbackAlert, ShowAlert: true}
+		if _, err := bot.Request(cfg); err != nil {
+			log.Printf("error answering callback with alert: %v", err)
+		}
+	} else {
+		answer := tgbotapi.NewCallback(callback.ID, "")
+		if _, err := bot.Request(answer); err != nil {
+			log.Printf("error answering callback: %v", err)
+		}
 	}
 }

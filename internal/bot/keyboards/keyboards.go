@@ -90,6 +90,9 @@ func TeamManagementKeyboard(team domain.Team) tgbotapi.InlineKeyboardMarkup {
 			tgbotapi.NewInlineKeyboardButtonData("⚽ Запланировать игру", fmt.Sprintf("game:0:{\"team_id\":\"%s\"}", team.ID)),
 		),
 		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("✅ Утвердить состав на игру", fmt.Sprintf("approve_lineup:0:{\"ti\":\"%s\"}", team.ID)),
+		),
+		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("📋 Список игроков", fmt.Sprintf("players:0:{\"id\":\"%s\"}", team.ID)),
 		),
 		tgbotapi.NewInlineKeyboardRow(
@@ -205,4 +208,53 @@ func CommercialGoalkeeperKeyboard(prefix string, eventType string) tgbotapi.Inli
 			tgbotapi.NewInlineKeyboardButtonData("❌ Нет", fmt.Sprintf("%s_%s:5:{\"comm\": \"false\"}", prefix, eventType)),
 		),
 	)
+}
+
+// ApproveLineupGameChoiceKeyboard — выбор игры при нескольких предстоящих (callback до 64 байт).
+func ApproveLineupGameChoiceKeyboard(teamID string, games []domain.Training) tgbotapi.InlineKeyboardMarkup {
+	var rows [][]tgbotapi.InlineKeyboardButton
+	for _, g := range games {
+		label := g.Date.Format("02.01") + " «" + g.Opponent + "»"
+		data := fmt.Sprintf("approve_lineup:1:{\"g\":\"%s\"}", g.ID)
+		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData(label, data),
+		))
+	}
+	return tgbotapi.NewInlineKeyboardMarkup(rows...)
+}
+
+// ApproveLineupKeyboard — игроки (желающие) в два столбца с галочкой/крестиком, затем кнопка «Утвердить состав» на всю ширину.
+// approvedSet — множество ID утверждённых. Callback до 64 байт: только g (game_id) и t (player_id).
+func ApproveLineupKeyboard(teamID, gameID string, willing []domain.Player, approvedSet map[string]bool) tgbotapi.InlineKeyboardMarkup {
+	const cols = 2
+	var rows [][]tgbotapi.InlineKeyboardButton
+
+	for i := 0; i < len(willing); i += cols {
+		var row []tgbotapi.InlineKeyboardButton
+		for j := 0; j < cols && i+j < len(willing); j++ {
+			p := willing[i+j]
+			in := approvedSet[p.ID]
+			icon := "❌"
+			if in {
+				icon = "✅"
+			}
+			label := icon + " " + p.FullName
+			cb := fmt.Sprintf("approve_lineup:1:{\"g\":\"%s\",\"t\":\"%s\"}", gameID, p.ID)
+			if len(cb) > 64 {
+				cb = fmt.Sprintf("approve_lineup:1:{\"t\":\"%s\"}", p.ID)
+			}
+			row = append(row, tgbotapi.NewInlineKeyboardButtonData(label, cb))
+		}
+		if len(row) == 1 {
+			// Нечётное количество: справа пустая кнопка-заглушка (ничего не делает при нажатии)
+			row = append(row, tgbotapi.NewInlineKeyboardButtonData(" ", "approve_lineup:1:{}"))
+		}
+		rows = append(rows, row)
+	}
+
+	// Кнопка «Утвердить состав» — на всю ширину (отдельная строка)
+	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+		tgbotapi.NewInlineKeyboardButtonData("🚀 Утвердить состав", fmt.Sprintf("approve_lineup:2:{\"g\":\"%s\"}", gameID)),
+	))
+	return tgbotapi.NewInlineKeyboardMarkup(rows...)
 }

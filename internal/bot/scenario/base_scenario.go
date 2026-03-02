@@ -31,6 +31,7 @@ type Action struct {
 	TemporaryReply               []*tgbotapi.MessageConfig
 	FlushTemporary               bool
 	LeaveChat                    bool
+	CallbackAlert                string // если не пусто — ответ на callback_query с показом алерта (popup)
 	PendingReplyContext          *pendingreply.PendingReplyContext
 	CoachNotificationOnDMFailure *pendingreply.PendingReplyContext // Уведомление тренерам при неудачной доставке личного сообщения
 }

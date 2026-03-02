@@ -3,6 +3,7 @@ package storage
 import (
 	"fmt"
 	"hockey_bot/internal/domain"
+	"time"
 
 	"gorm.io/gorm"
 )
@@ -87,4 +88,24 @@ func (s *gormStorage) GetRecentVenues(teamID string) []string {
 	}
 
 	return venues
+}
+
+// GetUpcomingGames возвращает ближайшие предстоящие игры команды (type=match, date >= now).
+func (s *gormStorage) GetUpcomingGames(teamID string, limit int) ([]domain.Training, error) {
+	if limit <= 0 {
+		limit = 10
+	}
+	var list []domain.Training
+	now := time.Now()
+	err := s.db.
+		Preload("Players").
+		Preload("Team").
+		Where("team_id = ? AND type = ? AND date >= ?", teamID, domain.TrainingMatch, now).
+		Order("date ASC").
+		Limit(limit).
+		Find(&list).Error
+	if err != nil {
+		return nil, err
+	}
+	return list, nil
 }
