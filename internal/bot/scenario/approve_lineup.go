@@ -84,7 +84,7 @@ func approveLineupStep0FindGame(st storage.Storage, chatID int64, userID int64, 
 	msg.ReplyMarkup = &tgbotapi.InlineKeyboardMarkup{
 		InlineKeyboard: keyboards.ApproveLineupGameChoiceKeyboard(teamID, games).InlineKeyboard,
 	}
-	res.AddReply(&msg)
+	res.AddTemporaryReply(&msg)
 	user_state.SetUserState(userID, chatID, fmt.Sprintf("approve_lineup:0:{\"ti\":\"%s\"}", teamID))
 	return res, nil
 }
@@ -334,6 +334,9 @@ func approveLineupStep2Confirm(st storage.Storage, chatID int64, userID int64, m
 		teamMsg.ParseMode = tgbotapi.ModeMarkdown
 		res.AddReply(&teamMsg)
 	}
+
+	// Убираем все временные сообщения (в том числе клавиатуру выбора игры)
+	res.FlushTemporary = true
 
 	delete(approveLineupStateByUser, userID)
 	delete(approveLineupMessageID, userID)
