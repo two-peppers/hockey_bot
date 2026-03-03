@@ -71,8 +71,14 @@ func approveLineupStep0FindGame(st storage.Storage, chatID int64, userID int64, 
 		g := &games[0]
 		approvedIDs, _ := st.GetApprovedPlayerIDs(g.ID)
 		approvedMap := make(map[string]bool)
-		for _, id := range approvedIDs {
-			approvedMap[id] = true
+		if len(approvedIDs) == 0 {
+			for _, p := range g.Players {
+				approvedMap[p.ID] = true
+			}
+		} else {
+			for _, id := range approvedIDs {
+				approvedMap[id] = true
+			}
 		}
 		approveLineupStateByUser[userID] = &approveLineupState{
 			TeamID:      teamID,
@@ -158,8 +164,14 @@ func approveLineupStep1Manage(st storage.Storage, chatID int64, userID int64, me
 		}
 		// Подгрузить уже утверждённых из БД
 		approvedIDs, _ := st.GetApprovedPlayerIDs(gameID)
-		for _, id := range approvedIDs {
-			state.ApprovedIDs[id] = true
+		if len(approvedIDs) == 0 {
+			for _, p := range game.Players {
+				state.ApprovedIDs[p.ID] = true
+			}
+		} else {
+			for _, id := range approvedIDs {
+				state.ApprovedIDs[id] = true
+			}
 		}
 		approveLineupStateByUser[userID] = state
 	}
