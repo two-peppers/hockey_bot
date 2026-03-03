@@ -88,9 +88,18 @@ func executeRoute(bot *tgbotapi.BotAPI, store storage.Storage, chatID int64, use
 	if len(action.Reply) > 0 {
 		for _, reply := range action.Reply {
 			reply.DisableNotification = true
-			_, err := bot.Send(reply)
+			sentMsg, err := bot.Send(reply)
 			if err != nil {
 				log.Printf("error sending reply: %v", err)
+				continue
+			}
+			// Если нужно сохранить message_id утверждённого состава для тренировки
+			if action.ApprovedMessageTrainingID != "" {
+				if err := store.UpdateApprovedMessageID(action.ApprovedMessageTrainingID, sentMsg.MessageID); err != nil {
+					log.Printf("error updating approved message id for training %s: %v", action.ApprovedMessageTrainingID, err)
+				}
+				// Сохраняем только для одного сообщения, чтобы не перезаписывать случайно
+				action.ApprovedMessageTrainingID = ""
 			}
 		}
 	}
@@ -142,6 +151,14 @@ func executeRoute(bot *tgbotapi.BotAPI, store storage.Storage, chatID int64, use
 				}
 
 				bot.Request(pinReq)
+
+				// Если нужно сохранить message_id утверждённого состава для тренировки
+				if action.ApprovedMessageTrainingID != "" {
+					if err := store.UpdateApprovedMessageID(action.ApprovedMessageTrainingID, sentMsg.MessageID); err != nil {
+						log.Printf("error updating approved message id for training %s (pin): %v", action.ApprovedMessageTrainingID, err)
+					}
+					action.ApprovedMessageTrainingID = ""
+				}
 			}
 		}
 	}

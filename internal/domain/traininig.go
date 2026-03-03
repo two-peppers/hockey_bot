@@ -46,6 +46,7 @@ type Training struct {
 	StrictCapacity bool         `json:"strict_capacity"`
 	Players        []Player     `gorm:"many2many:training_players;foreignKey:ID;joinForeignKey:TrainingID;References:ID;joinReferences:PlayerID"` // ✅ Many-to-Many
 	Message        string       `gorm:"size:255" json:"message"`
+	ApprovedMessageID int       `gorm:"default:0" json:"approved_message_id"` // message_id сообщения с утверждённым составом в командном чате
 	CreatedAt      time.Time    `gorm:"autoCreateTime" json:"created_at"`
 	UpdatedAt      time.Time    `gorm:"autoUpdateTime" json:"updated_at"`
 }
@@ -54,6 +55,7 @@ type Training struct {
 type TrainingPlayer struct {
 	TrainingID string    `gorm:"primaryKey"`
 	PlayerID   string    `gorm:"primaryKey"`
+	Approved   bool      `gorm:"default:false" json:"approved"` // для игр: утверждён тренером в составе
 	CreatedAt  time.Time `gorm:"autoCreateTime"`
 }
 

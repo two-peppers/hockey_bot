@@ -69,10 +69,15 @@ func approveLineupStep0FindGame(st storage.Storage, chatID int64, userID int64, 
 
 	if len(games) == 1 {
 		g := &games[0]
+		approvedIDs, _ := st.GetApprovedPlayerIDs(g.ID)
+		approvedMap := make(map[string]bool)
+		for _, id := range approvedIDs {
+			approvedMap[id] = true
+		}
 		approveLineupStateByUser[userID] = &approveLineupState{
 			TeamID:      teamID,
 			GameID:      g.ID,
-			ApprovedIDs: make(map[string]bool),
+			ApprovedIDs: approvedMap,
 		}
 		user_state.SetUserState(userID, chatID, fmt.Sprintf("approve_lineup:1:{\"ti\":\"%s\",\"gi\":\"%s\"}", teamID, g.ID))
 		return approveLineupStep1Manage(st, chatID, userID, messageID, data)
@@ -143,13 +148,18 @@ func approveLineupStep1Manage(st storage.Storage, chatID int64, userID int64, me
 		return res, nil
 	}
 
-	// Восстановить/инициализировать состояние утверждённых
+	// Восстановить/инициализировать состояние утверждённых (в т.ч. из БД при повторном заходе)
 	state, ok := approveLineupStateByUser[userID]
 	if !ok || state.GameID != gameID {
 		state = &approveLineupState{
 			TeamID:      teamID,
 			GameID:      gameID,
 			ApprovedIDs: make(map[string]bool),
+		}
+		// Подгрузить уже утверждённых из БД
+		approvedIDs, _ := st.GetApprovedPlayerIDs(gameID)
+		for _, id := range approvedIDs {
+			state.ApprovedIDs[id] = true
 		}
 		approveLineupStateByUser[userID] = state
 	}
@@ -301,13 +311,11 @@ func approveLineupStep2Confirm(st storage.Storage, chatID int64, userID int64, m
 		return res, nil
 	}
 
-	game.Players = approved
-	game.Capacity = len(approved)
-	if game.Capacity < 1 {
-		game.Capacity = 1
+	approvedPlayerIDs := make([]string, 0, len(approved))
+	for _, p := range approved {
+		approvedPlayerIDs = append(approvedPlayerIDs, p.ID)
 	}
-
-	err = st.SaveTraining(game)
+	err = st.SetApprovedPlayers(gameID, approvedPlayerIDs)
 	if err != nil {
 		res.AddReply(&tgbotapi.MessageConfig{
 			BaseChat: tgbotapi.BaseChat{ChatID: chatID},
@@ -328,11 +336,19 @@ func approveLineupStep2Confirm(st storage.Storage, chatID int64, userID int64, m
 		res.AddEdit(&edit)
 	}
 
-	// Сообщение в командный чат с финальным составом (без клавиатуры)
+	// Если в командном чате уже было сообщение с утверждённым составом — удаляем его
+	if game.Team.ChatID != nil && *game.Team.ChatID != 0 && game.ApprovedMessageID != 0 {
+		del := tgbotapi.NewDeleteMessage(*game.Team.ChatID, game.ApprovedMessageID)
+		res.AddDelete(&del)
+	}
+
+	// Сообщение в командный чат с финальным составом (без клавиатуры), закрепляем его
 	if game.Team.ChatID != nil && *game.Team.ChatID != 0 {
 		teamMsg := tgbotapi.NewMessage(*game.Team.ChatID, approvedLineupMessage(game, approved))
 		teamMsg.ParseMode = tgbotapi.ModeMarkdown
-		res.AddReply(&teamMsg)
+		res.AddPin(&teamMsg)
+		// Попросим роутер сохранить message_id этого сообщения для данной тренировки
+		res.ApprovedMessageTrainingID = game.ID
 	}
 
 	// Убираем все временные сообщения (в том числе клавиатуру выбора игры)
