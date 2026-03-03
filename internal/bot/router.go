@@ -18,19 +18,20 @@ type RouteMap map[string]scenario.Scenario
 
 func getScenario(scenarioID string) (scenario.Scenario, error) {
 	routeMap := RouteMap{
-		"create_team": scenario.NewCreateTeam(),
-		"manage_team": scenario.NewManageTeam(),
-		"train":       scenario.NewScheduleTraining(),
-		"game":        scenario.NewScheduleGame(),
-		"go_tr":       scenario.NewJoinTraining(),
-		"nogo_tr":     scenario.NewCancelJoinTraining(),
-		"frgo_tr":     scenario.NewFriendJoinTraining(),
-		"frnogo_tr":   scenario.NewCancelFriendJoinTraining(),
-		"add_chat":    scenario.NewAddBot(),
-		"players":     scenario.NewPlayersList(),
-		"set_admin":   scenario.NewSetAdmin(),
-		"del_admin":   scenario.NewDelAdmin(),
-		"cancel_reason": scenario.NewCancelReason(),
+		"create_team":    scenario.NewCreateTeam(),
+		"manage_team":    scenario.NewManageTeam(),
+		"train":          scenario.NewScheduleTraining(),
+		"game":           scenario.NewScheduleGame(),
+		"go_tr":          scenario.NewJoinTraining(),
+		"nogo_tr":        scenario.NewCancelJoinTraining(),
+		"frgo_tr":        scenario.NewFriendJoinTraining(),
+		"frnogo_tr":      scenario.NewCancelFriendJoinTraining(),
+		"add_chat":       scenario.NewAddBot(),
+		"players":        scenario.NewPlayersList(),
+		"set_admin":      scenario.NewSetAdmin(),
+		"del_admin":      scenario.NewDelAdmin(),
+		"cancel_reason":  scenario.NewCancelReason(),
+		"approve_lineup": scenario.NewApproveLineup(),
 	}
 
 	if sc, exists := routeMap[scenarioID]; exists {
@@ -40,11 +41,11 @@ func getScenario(scenarioID string) (scenario.Scenario, error) {
 	return nil, fmt.Errorf("scenario id %s not found", scenarioID)
 }
 
-func executeRoute(bot *tgbotapi.BotAPI, store storage.Storage, chatID int64, userID int64, messageID int, userName string, message string) {
+func executeRoute(bot *tgbotapi.BotAPI, store storage.Storage, chatID int64, userID int64, messageID int, userName string, message string) *scenario.Action {
 	sc, st, dt := route(userID, chatID)
 
 	if len(sc) == 0 {
-		return
+		return nil
 	}
 
 	if len(message) > 0 {
@@ -58,7 +59,7 @@ func executeRoute(bot *tgbotapi.BotAPI, store storage.Storage, chatID int64, use
 	if err != nil {
 		state.ClearUserState(userID, chatID)
 		log.Printf("error getting scenario: %v", err)
-		return
+		return nil
 	}
 
 	step, err := scen.GetStep(st)
@@ -66,20 +67,39 @@ func executeRoute(bot *tgbotapi.BotAPI, store storage.Storage, chatID int64, use
 	if err != nil {
 		state.ClearUserState(userID, chatID)
 		log.Printf("error getting step: %v", err)
+		return nil
 	}
 
 	action, err := step(store, chatID, userID, messageID, dt)
 
 	if err != nil {
-		return
+		return nil
+	}
+
+	if action == nil {
+		return nil
+	}
+
+	// Если задан алерт для callback — остальное не выполняем, алерт покажет handleCallback
+	if action.CallbackAlert != "" {
+		return action
 	}
 
 	if len(action.Reply) > 0 {
 		for _, reply := range action.Reply {
 			reply.DisableNotification = true
-			_, err := bot.Send(reply)
+			sentMsg, err := bot.Send(reply)
 			if err != nil {
 				log.Printf("error sending reply: %v", err)
+				continue
+			}
+			// Если нужно сохранить message_id утверждённого состава для тренировки
+			if action.ApprovedMessageTrainingID != "" {
+				if err := store.UpdateApprovedMessageID(action.ApprovedMessageTrainingID, sentMsg.MessageID); err != nil {
+					log.Printf("error updating approved message id for training %s: %v", action.ApprovedMessageTrainingID, err)
+				}
+				// Сохраняем только для одного сообщения, чтобы не перезаписывать случайно
+				action.ApprovedMessageTrainingID = ""
 			}
 		}
 	}
@@ -131,6 +151,14 @@ func executeRoute(bot *tgbotapi.BotAPI, store storage.Storage, chatID int64, use
 				}
 
 				bot.Request(pinReq)
+
+				// Если нужно сохранить message_id утверждённого состава для тренировки
+				if action.ApprovedMessageTrainingID != "" {
+					if err := store.UpdateApprovedMessageID(action.ApprovedMessageTrainingID, sentMsg.MessageID); err != nil {
+						log.Printf("error updating approved message id for training %s (pin): %v", action.ApprovedMessageTrainingID, err)
+					}
+					action.ApprovedMessageTrainingID = ""
+				}
 			}
 		}
 	}
@@ -149,6 +177,8 @@ func executeRoute(bot *tgbotapi.BotAPI, store storage.Storage, chatID int64, use
 
 		go bot.Send(leave)
 	}
+
+	return action
 }
 
 func route(userID int64, chatID int64) (string, int, scenario.Data) {
