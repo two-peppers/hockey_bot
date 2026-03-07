@@ -33,8 +33,10 @@ type Storage interface {
 	GetPlayersByTeamID(teamId string) ([]domain.Player, error)
 	SaveTraining(training *domain.Training) error
 	GetUpcomingGames(teamID string, limit int) ([]domain.Training, error)
+	GetUpcomingTrainingsByTelegramID(telegramID int64, limit int) ([]domain.Training, error)
 	GetApprovedPlayerIDs(trainingID string) ([]string, error)
 	SetApprovedPlayers(trainingID string, approvedPlayerIDs []string) error
+	UpdateTeamMessageID(trainingID string, messageID int) error
 	UpdateApprovedMessageID(trainingID string, messageID int) error
 }
 

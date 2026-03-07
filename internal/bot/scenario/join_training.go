@@ -240,6 +240,12 @@ func confirmPlayerJoin(st storage.Storage, chatID int64, userID int64, messageID
 	editMsg.ReplyMarkup = &keyboard
 
 	res.AddEdit(&editMsg)
+	if chatID > 0 && training.Team.ChatID != nil && *training.Team.ChatID != 0 && training.TeamMessageID != 0 {
+		teamEdit := tgbotapi.NewEditMessageText(*training.Team.ChatID, training.TeamMessageID, training.String())
+		teamEdit.ParseMode = tgbotapi.ModeMarkdown
+		teamEdit.ReplyMarkup = &keyboard
+		res.AddEdit(&teamEdit)
+	}
 	res.FlushTemporary = true
 
 	delete(userTrainingMessageID, userID)

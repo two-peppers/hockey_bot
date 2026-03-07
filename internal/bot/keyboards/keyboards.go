@@ -7,17 +7,17 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
-// MainMenuKeyboard возвращает главное меню с 3 кнопками
+// MainMenuKeyboard возвращает главное меню с кнопками
 func MainMenuKeyboard() tgbotapi.InlineKeyboardMarkup {
 	return tgbotapi.NewInlineKeyboardMarkup(
 		// Первая строка - "Создать команду"
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("🏒 Создать команду", "create_team:0"),
 		),
-		// Вторая строка - "Присоединиться к команде"
-		//tgbotapi.NewInlineKeyboardRow(
-		//	tgbotapi.NewInlineKeyboardButtonData("👥 Присоединиться к команде", "join_team:0"),
-		//),
+		// Вторая строка - "Предстоящие тренировки"
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("📅 Предстоящие тренировки", "trainings:0"),
+		),
 		// Третья строка - "Управлять командой"
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("⚙️ Управлять командой", "manage_team:0"),
@@ -220,6 +220,20 @@ func ApproveLineupGameChoiceKeyboard(teamID string, games []domain.Training) tgb
 			tgbotapi.NewInlineKeyboardButtonData(label, data),
 		))
 	}
+	return tgbotapi.NewInlineKeyboardMarkup(rows...)
+}
+
+func TrainingsChoiceKeyboard(trainings []domain.Training) tgbotapi.InlineKeyboardMarkup {
+	var rows [][]tgbotapi.InlineKeyboardButton
+
+	for _, tr := range trainings {
+		label := fmt.Sprintf("%s %s • %s • %s", tr.Date.Format("02.01"), tr.Date.Format("15:04"), tr.Team.Name, tr.Type.ToString())
+		data := fmt.Sprintf("trainings:1:{\"id\":\"%s\"}", tr.ID)
+		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData(label, data),
+		))
+	}
+
 	return tgbotapi.NewInlineKeyboardMarkup(rows...)
 }
 

@@ -32,6 +32,7 @@ func getScenario(scenarioID string) (scenario.Scenario, error) {
 		"del_admin":      scenario.NewDelAdmin(),
 		"cancel_reason":  scenario.NewCancelReason(),
 		"approve_lineup": scenario.NewApproveLineup(),
+		"trainings":      scenario.NewTrainingsList(),
 	}
 
 	if sc, exists := routeMap[scenarioID]; exists {
@@ -151,6 +152,14 @@ func executeRoute(bot *tgbotapi.BotAPI, store storage.Storage, chatID int64, use
 				}
 
 				bot.Request(pinReq)
+
+				// Если нужно сохранить message_id исходного сообщения тренировки в командном чате
+				if action.TeamMessageTrainingID != "" {
+					if err := store.UpdateTeamMessageID(action.TeamMessageTrainingID, sentMsg.MessageID); err != nil {
+						log.Printf("error updating team message id for training %s (pin): %v", action.TeamMessageTrainingID, err)
+					}
+					action.TeamMessageTrainingID = ""
+				}
 
 				// Если нужно сохранить message_id утверждённого состава для тренировки
 				if action.ApprovedMessageTrainingID != "" {

@@ -32,6 +32,7 @@ type Action struct {
 	FlushTemporary               bool
 	LeaveChat                    bool
 	CallbackAlert                string // если не пусто — ответ на callback_query с показом алерта (popup)
+	TeamMessageTrainingID        string // если не пусто — после отправки Pin в командный чат сохранить message_id как TeamMessageID для этой тренировки
 	ApprovedMessageTrainingID    string // если не пусто — после отправки Reply в командный чат сохранить message_id как ApprovedMessageID для этой тренировки
 	PendingReplyContext          *pendingreply.PendingReplyContext
 	CoachNotificationOnDMFailure *pendingreply.PendingReplyContext // Уведомление тренерам при неудачной доставке личного сообщения
@@ -44,7 +45,7 @@ func NewAction() *Action {
 		Delete:                       make([]*tgbotapi.DeleteMessageConfig, 0),
 		Pin:                          make([]*tgbotapi.MessageConfig, 0),
 		TemporaryReply:               make([]*tgbotapi.MessageConfig, 0),
-		FlushTemporary:                false,
+		FlushTemporary:               false,
 		LeaveChat:                    false,
 		PendingReplyContext:          nil,
 		CoachNotificationOnDMFailure: nil,

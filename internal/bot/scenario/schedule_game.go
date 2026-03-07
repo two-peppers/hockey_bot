@@ -316,6 +316,7 @@ func checkGameOpponentAndCreateGame(st storage.Storage, chatID int64, userID int
 		chatMessage.ParseMode = tgbotapi.ModeMarkdown
 		chatMessage.ReplyMarkup = keyboards.TakePartKeyboard("tr", training.ID)
 		res.AddPin(&chatMessage)
+		res.TeamMessageTrainingID = training.ID
 	}
 
 	res.AddReply(&replyMsg)

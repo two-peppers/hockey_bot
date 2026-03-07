@@ -97,6 +97,15 @@ func handleMessage(bot *tgbotapi.BotAPI, msg tgbotapi.Message, store storage.Sto
 		return
 	}
 
+	if strings.HasPrefix(text, "/trainings") {
+		if chatID < 0 {
+			delMsg := tgbotapi.NewDeleteMessage(chatID, messageID)
+			bot.Send(delMsg)
+			return
+		}
+		user_state.SetUserState(senderID, chatID, "trainings:0")
+	}
+
 	userName := msg.From.UserName
 	if len(userName) == 0 {
 		userName = msg.From.FirstName

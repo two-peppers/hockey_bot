@@ -68,6 +68,12 @@ func confirmTakePartTrainingCancel(st storage.Storage, chatID int64, userID int6
 
 	res := NewAction()
 	res.AddEdit(&editMsg)
+	if chatID > 0 && training.Team.ChatID != nil && *training.Team.ChatID != 0 && training.TeamMessageID != 0 {
+		teamEdit := tgbotapi.NewEditMessageText(*training.Team.ChatID, training.TeamMessageID, training.String())
+		teamEdit.ParseMode = tgbotapi.ModeMarkdown
+		teamEdit.ReplyMarkup = &keyboard
+		res.AddEdit(&teamEdit)
+	}
 
 	reasonMsg := tgbotapi.NewMessage(
 		userID,
@@ -87,7 +93,7 @@ func confirmTakePartTrainingCancel(st storage.Storage, chatID int64, userID int6
 		QuestionChatID: userID,
 	}
 	res.PendingReplyContext = ctx
-	
+
 	// Если личное сообщение не доставится, уведомим тренеров
 	res.CoachNotificationOnDMFailure = ctx
 
