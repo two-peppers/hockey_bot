@@ -34,21 +34,22 @@ func (t TrainingType) ToString() string {
 }
 
 type Training struct {
-	ID             string       `gorm:"primaryKey;type:text;size:36" json:"id"`
-	TeamID         string       `gorm:"index" json:"team_id"`
-	Team           Team         `gorm:"foreignKey:TeamID;references:ID"`
-	Type           TrainingType `gorm:"type:varchar(20);index" json:"type"`
-	Date           time.Time    `gorm:"index" json:"date"`
-	Venue          string       `json:"venue"`
-	Opponent       string       `json:"opponent"`
-	Division       string       `json:"division"`
-	Capacity       int          `gorm:"index" json:"capacity"`
-	StrictCapacity bool         `json:"strict_capacity"`
-	Players        []Player     `gorm:"many2many:training_players;foreignKey:ID;joinForeignKey:TrainingID;References:ID;joinReferences:PlayerID"` // ✅ Many-to-Many
-	Message        string       `gorm:"size:255" json:"message"`
-	ApprovedMessageID int       `gorm:"default:0" json:"approved_message_id"` // message_id сообщения с утверждённым составом в командном чате
-	CreatedAt      time.Time    `gorm:"autoCreateTime" json:"created_at"`
-	UpdatedAt      time.Time    `gorm:"autoUpdateTime" json:"updated_at"`
+	ID                string       `gorm:"primaryKey;type:text;size:36" json:"id"`
+	TeamID            string       `gorm:"index" json:"team_id"`
+	Team              Team         `gorm:"foreignKey:TeamID;references:ID"`
+	Type              TrainingType `gorm:"type:varchar(20);index" json:"type"`
+	Date              time.Time    `gorm:"index" json:"date"`
+	Venue             string       `json:"venue"`
+	Opponent          string       `json:"opponent"`
+	Division          string       `json:"division"`
+	Capacity          int          `gorm:"index" json:"capacity"`
+	StrictCapacity    bool         `json:"strict_capacity"`
+	Players           []Player     `gorm:"many2many:training_players;foreignKey:ID;joinForeignKey:TrainingID;References:ID;joinReferences:PlayerID"` // ✅ Many-to-Many
+	Message           string       `gorm:"size:255" json:"message"`
+	TeamMessageID     int          `gorm:"default:0" json:"team_message_id"`     // message_id исходного сообщения тренировки в командном чате
+	ApprovedMessageID int          `gorm:"default:0" json:"approved_message_id"` // message_id сообщения с утверждённым составом в командном чате
+	CreatedAt         time.Time    `gorm:"autoCreateTime" json:"created_at"`
+	UpdatedAt         time.Time    `gorm:"autoUpdateTime" json:"updated_at"`
 }
 
 // TrainingPlayer Связующая таблица (GORM создаст автоматически)

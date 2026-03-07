@@ -129,6 +129,34 @@ func (s *gormStorage) GetUpcomingGames(teamID string, limit int) ([]domain.Train
 	return list, nil
 }
 
+// GetUpcomingTrainingsByTelegramID возвращает предстоящие тренировки пользователя (кроме матчей) во всех его командах.
+func (s *gormStorage) GetUpcomingTrainingsByTelegramID(telegramID int64, limit int) ([]domain.Training, error) {
+	if limit <= 0 {
+		limit = 10
+	}
+	var list []domain.Training
+	now := time.Now()
+
+	// Выбираем все тренировки команд, в которых у пользователя есть игрок (по telegram_id),
+	// независимо от того, записан ли он на конкретную тренировку.
+	subQuery := s.db.Model(&domain.Player{}).
+		Select("team_id").
+		Where("telegram_id = ?", telegramID)
+
+	err := s.db.
+		Model(&domain.Training{}).
+		Preload("Players").
+		Preload("Team").
+		Where("team_id IN (?) AND type <> ? AND date >= ?", subQuery, domain.TrainingMatch, now).
+		Order("date ASC").
+		Limit(limit).
+		Find(&list).Error
+	if err != nil {
+		return nil, err
+	}
+	return list, nil
+}
+
 // GetApprovedPlayerIDs возвращает player_id утверждённых для данной тренировки/игры (порядок по created_at).
 func (s *gormStorage) GetApprovedPlayerIDs(trainingID string) ([]string, error) {
 	var ids []string
@@ -172,6 +200,13 @@ func (s *gormStorage) SetApprovedPlayers(trainingID string, approvedPlayerIDs []
 		return err
 	}
 	return tx.Commit().Error
+}
+
+// UpdateTeamMessageID сохраняет message_id исходного сообщения тренировки/игры в командном чате.
+func (s *gormStorage) UpdateTeamMessageID(trainingID string, messageID int) error {
+	return s.db.Model(&domain.Training{}).
+		Where("id = ?", trainingID).
+		Update("team_message_id", messageID).Error
 }
 
 // UpdateApprovedMessageID сохраняет message_id сообщения с утверждённым составом для тренировки/игры.
