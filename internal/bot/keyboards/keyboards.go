@@ -201,6 +201,43 @@ func FriendsKeyboard(prefix string, eventType string, step int, players []domain
 	return tgbotapi.NewInlineKeyboardMarkup(rows...)
 }
 
+const FriendsPageSize = 8
+
+// PaginatedFriendsKeyboard показывает одну страницу друзей и навигацию.
+func PaginatedFriendsKeyboard(prefix, eventType string, selectStep, pageStep, page int, players []domain.Player) tgbotapi.InlineKeyboardMarkup {
+	if page < 0 {
+		page = 0
+	}
+	pageCount := (len(players) + FriendsPageSize - 1) / FriendsPageSize
+	if pageCount == 0 {
+		pageCount = 1
+	}
+	if page >= pageCount {
+		page = pageCount - 1
+	}
+
+	start := page * FriendsPageSize
+	end := start + FriendsPageSize
+	if end > len(players) {
+		end = len(players)
+	}
+	keyboard := FriendsKeyboard(prefix, eventType, selectStep, players[start:end])
+	if pageCount == 1 {
+		return keyboard
+	}
+
+	var navigation []tgbotapi.InlineKeyboardButton
+	if page > 0 {
+		navigation = append(navigation, tgbotapi.NewInlineKeyboardButtonData("⬅️ Назад", fmt.Sprintf("%s_%s:%d:{\"p\":%d}", prefix, eventType, pageStep, page-1)))
+	}
+	navigation = append(navigation, tgbotapi.NewInlineKeyboardButtonData(fmt.Sprintf("%d/%d", page+1, pageCount), fmt.Sprintf("%s_%s:%d:{\"p\":%d}", prefix, eventType, pageStep, page)))
+	if page+1 < pageCount {
+		navigation = append(navigation, tgbotapi.NewInlineKeyboardButtonData("Вперёд ➡️", fmt.Sprintf("%s_%s:%d:{\"p\":%d}", prefix, eventType, pageStep, page+1)))
+	}
+	keyboard.InlineKeyboard = append(keyboard.InlineKeyboard, navigation)
+	return keyboard
+}
+
 func CommercialGoalkeeperKeyboard(prefix string, eventType string) tgbotapi.InlineKeyboardMarkup {
 	return tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(

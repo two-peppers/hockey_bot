@@ -67,6 +67,14 @@ func NewGORM(dbPath string) Storage {
 		log.Fatalf("failed to auto-migrate: %v", err)
 	}
 
+	removedDuplicates, err := migrateDuplicateFriends(db)
+	if err != nil {
+		log.Fatalf("failed to migrate duplicate friends: %v", err)
+	}
+	if removedDuplicates > 0 {
+		log.Printf("Removed %d duplicate friend records", removedDuplicates)
+	}
+
 	log.Printf("SQLite connected: %s", dbPath)
 	return &gormStorage{db: db}
 }
