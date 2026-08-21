@@ -7,6 +7,7 @@ import (
 	"hockey_bot/internal/bot/user_state"
 	"hockey_bot/internal/domain"
 	"hockey_bot/internal/storage"
+	"strconv"
 	"unicode/utf8"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
@@ -34,6 +35,7 @@ func NewFriendJoinTraining() *FriendJoinTraining {
 				askFriendGoalkeeperCommercial,
 				checkFriendGoalkeeperCommercial,
 				confirmFriendJoinTraining,
+				showFriendsPage,
 			},
 		},
 	}
@@ -61,7 +63,7 @@ func askFriendName(st storage.Storage, chatID int64, userID int64, messageID int
 	replyMsg.ParseMode = tgbotapi.ModeMarkdown
 
 	if len(friends) > 0 {
-		replyMsg.ReplyMarkup = keyboards.FriendsKeyboard("frgo", "tr", 6, friends)
+		replyMsg.ReplyMarkup = keyboards.PaginatedFriendsKeyboard("frgo", "tr", 6, 7, 0, friends)
 		replyMsg.Text += "\n\n_(можешь выбрать из списка ниже)_"
 	}
 
@@ -69,6 +71,28 @@ func askFriendName(st storage.Storage, chatID int64, userID int64, messageID int
 
 	user_state.SetUserState(userID, chatID, "frgo_tr:1")
 
+	return res, nil
+}
+
+func showFriendsPage(st storage.Storage, chatID int64, userID int64, messageID int, data Data) (*Action, error) {
+	training, err := st.GetTrainingByID(userFriendTrainingID[userID])
+	if err != nil || training == nil {
+		return nil, errors.New("training not found")
+	}
+	friends, err := st.GetPlayersByTelegramID(training.TeamID, userID)
+	if err != nil || len(friends) < 2 {
+		return nil, errors.New("friends not found")
+	}
+	friends = friends[1:]
+	page, _ := strconv.Atoi(data.Get("p"))
+	text := fmt.Sprintf("👤 [%s](tg://user?id=%d), как фамилия друга?\n\n_(можешь выбрать из списка ниже)_", data.Get("username"), userID)
+	keyboard := keyboards.PaginatedFriendsKeyboard("frgo", "tr", 6, 7, page, friends)
+	edit := tgbotapi.NewEditMessageText(chatID, messageID, text)
+	edit.ParseMode = tgbotapi.ModeMarkdown
+	edit.ReplyMarkup = &keyboard
+	res := NewAction()
+	res.AddEdit(&edit)
+	user_state.SetUserState(userID, chatID, "frgo_tr:1")
 	return res, nil
 }
 
