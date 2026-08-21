@@ -123,6 +123,12 @@ func executeRoute(bot *tgbotapi.BotAPI, store storage.Storage, chatID int64, use
 			} else if action.CoachNotificationOnDMFailure != nil && reply.ChatID == action.CoachNotificationOnDMFailure.QuestionChatID {
 				// Личное сообщение игроку не доставлено — уведомляем тренеров через Action.
 				log.Printf("failed to send cancel reason question to user %d: %v", reply.ChatID, err)
+				// Ответ уже не ожидается: не оставляем сценарий причины отмены,
+				// который мог бы обработать следующее случайное сообщение пользователя.
+				state.ClearUserState(
+					action.CoachNotificationOnDMFailure.UserID,
+					action.CoachNotificationOnDMFailure.QuestionChatID,
+				)
 				notifyCoachesCancelWithoutDM(bot, store, action.CoachNotificationOnDMFailure)
 			}
 		}

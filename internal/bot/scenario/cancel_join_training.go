@@ -30,6 +30,11 @@ func NewCancelJoinTraining() *CancelJoinTraining {
 }
 
 func confirmTakePartTrainingCancel(st storage.Storage, chatID int64, userID int64, messageID int, data Data) (*Action, error) {
+	// Кнопка запускает одношаговый сценарий. Если не очистить его состояние,
+	// следующее обычное сообщение пользователя в этом чате повторно выполнит
+	// отмену и снова отправит запрос причины в личку.
+	defer user_state.ClearUserState(userID, chatID)
+
 	trainingID := data.Get("id")
 	training, err := st.GetTrainingByID(trainingID)
 	if err != nil {
