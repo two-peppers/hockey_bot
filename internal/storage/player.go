@@ -83,8 +83,13 @@ func migrateDuplicateFriends(db *gorm.DB) (int, error) {
 			} else if err != nil {
 				tx.Rollback()
 				return removed, err
-			} else if link.Approved && !canonical.Approved {
-				if err := tx.Model(&canonical).Update("approved", true).Error; err != nil {
+			} else {
+				updates := map[string]interface{}{"approved": link.Approved || canonical.Approved}
+				if link.SignupOrder > 0 && (canonical.SignupOrder == 0 || link.SignupOrder < canonical.SignupOrder) {
+					updates["signup_order"] = link.SignupOrder
+					updates["created_at"] = link.CreatedAt
+				}
+				if err := tx.Model(&canonical).Updates(updates).Error; err != nil {
 					tx.Rollback()
 					return removed, err
 				}

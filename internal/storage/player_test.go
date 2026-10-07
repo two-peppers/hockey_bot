@@ -91,3 +91,45 @@ func TestCreatePlayerReusesExistingFriend(t *testing.T) {
 		t.Fatalf("players count = %d, want 1", count)
 	}
 }
+
+func TestMigrateDuplicateFriendsPreservesEarliestSignup(t *testing.T) {
+	for _, canonicalExists := range []bool{false, true} {
+		name := "move"
+		if canonicalExists {
+			name = "merge"
+		}
+		t.Run(name, func(t *testing.T) {
+			store := newTrainingTestStorage(t)
+			created := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+			players := []domain.Player{
+				{ID: "owner", TeamID: "team", TelegramID: 42, CreatedAt: created},
+				{ID: "friend", TeamID: "team", TelegramID: 42, FullName: "Друг", CreatedAt: created.Add(time.Second)},
+				{ID: "duplicate", TeamID: "team", TelegramID: 42, FullName: "Друг", CreatedAt: created.Add(2 * time.Second)},
+			}
+			if err := store.db.Create(&players).Error; err != nil {
+				t.Fatal(err)
+			}
+			links := []domain.TrainingPlayer{
+				{TrainingID: "training", PlayerID: "duplicate", SignupOrder: 1, Approved: true},
+				{TrainingID: "training", PlayerID: "owner", SignupOrder: 2},
+			}
+			if canonicalExists {
+				links = append(links, domain.TrainingPlayer{TrainingID: "training", PlayerID: "friend", SignupOrder: 3})
+			}
+			if err := store.db.Create(&links).Error; err != nil {
+				t.Fatal(err)
+			}
+			removed, err := migrateDuplicateFriends(store.db)
+			if err != nil || removed != 1 {
+				t.Fatalf("removed = %d, err = %v", removed, err)
+			}
+			var link domain.TrainingPlayer
+			if err := store.db.Where("training_id = ? AND player_id = ?", "training", "friend").First(&link).Error; err != nil {
+				t.Fatal(err)
+			}
+			if link.SignupOrder != 1 || !link.Approved {
+				t.Fatalf("earliest signup or approval lost: %+v", link)
+			}
+		})
+	}
+}
