@@ -54,10 +54,11 @@ type Training struct {
 
 // TrainingPlayer Связующая таблица (GORM создаст автоматически)
 type TrainingPlayer struct {
-	TrainingID string    `gorm:"primaryKey"`
-	PlayerID   string    `gorm:"primaryKey"`
-	Approved   bool      `gorm:"default:false" json:"approved"` // для игр: утверждён тренером в составе
-	CreatedAt  time.Time `gorm:"autoCreateTime"`
+	TrainingID  string    `gorm:"primaryKey"`
+	PlayerID    string    `gorm:"primaryKey"`
+	Approved    bool      `gorm:"default:false" json:"approved"` // для игр: утверждён тренером в составе
+	CreatedAt   time.Time `gorm:"autoCreateTime"`
+	SignupOrder int64     `gorm:"not null;default:0"` // Порядок записи внутри тренировки, независимо от часов.
 }
 
 func (t *Training) String() string {

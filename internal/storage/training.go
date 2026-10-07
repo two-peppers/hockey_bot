@@ -9,7 +9,12 @@ import (
 )
 
 func (s *gormStorage) CreateTraining(training *domain.Training) error {
-	return s.db.Create(&training).Error
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Omit("Players").Create(training).Error; err != nil {
+			return err
+		}
+		return saveTrainingPlayers(tx, training)
+	})
 }
 
 // GetTrainingById возвращает команду по UUID
@@ -19,7 +24,7 @@ func (s *gormStorage) GetTrainingByID(id string) (*domain.Training, error) {
 		Preload("Players", func(db *gorm.DB) *gorm.DB {
 			return db.Joins("JOIN training_players tp ON tp.player_id = players.id").
 				Where("tp.training_id = ?", training.ID).
-				Order("tp.created_at ASC")
+				Order("tp.signup_order ASC")
 		}).
 		Preload("Team").
 		Where("id = ?", id).
@@ -35,22 +40,19 @@ func (s *gormStorage) GetTrainingByID(id string) (*domain.Training, error) {
 
 // SaveTraining сохраняет тренировку и список игроков (merge: добавляет новых, удаляет отсутствующих, не трогает approved у существующих).
 func (s *gormStorage) SaveTraining(training *domain.Training) error {
-	tx := s.db.Begin()
-	defer func() {
-		if r := recover(); r != nil {
-			tx.Rollback()
-			panic(r)
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		// Связи сохраняем явно: автоматическое сохранение many2many не
+		// заполняет время и номер записи в нашей модели TrainingPlayer.
+		if err := tx.Omit("Players").Save(training).Error; err != nil {
+			return fmt.Errorf("failed to save training: %w", err)
 		}
-	}()
+		return saveTrainingPlayers(tx, training)
+	})
+}
 
-	if err := tx.Save(training).Error; err != nil {
-		tx.Rollback()
-		return fmt.Errorf("failed to save training: %w", err)
-	}
-
+func saveTrainingPlayers(tx *gorm.DB, training *domain.Training) error {
 	var existingIDs []string
 	if err := tx.Model(&domain.TrainingPlayer{}).Where("training_id = ?", training.ID).Pluck("player_id", &existingIDs).Error; err != nil {
-		tx.Rollback()
 		return err
 	}
 	existingSet := make(map[string]bool)
@@ -58,17 +60,24 @@ func (s *gormStorage) SaveTraining(training *domain.Training) error {
 		existingSet[id] = true
 	}
 
+	var lastOrder int64
+	if err := tx.Model(&domain.TrainingPlayer{}).Where("training_id = ?", training.ID).
+		Select("COALESCE(MAX(signup_order), 0)").Scan(&lastOrder).Error; err != nil {
+		return err
+	}
 	for _, player := range training.Players {
 		if !existingSet[player.ID] {
+			lastOrder++
 			tp := domain.TrainingPlayer{
-				TrainingID: training.ID,
-				PlayerID:   player.ID,
-				Approved:   false,
+				TrainingID:  training.ID,
+				PlayerID:    player.ID,
+				Approved:    false,
+				SignupOrder: lastOrder,
 			}
 			if err := tx.Create(&tp).Error; err != nil {
-				tx.Rollback()
 				return fmt.Errorf("failed to add training_player: %w", err)
 			}
+			existingSet[player.ID] = true
 		}
 	}
 
@@ -78,17 +87,15 @@ func (s *gormStorage) SaveTraining(training *domain.Training) error {
 	}
 	if len(playerIDs) > 0 {
 		if err := tx.Where("training_id = ? AND player_id NOT IN ?", training.ID, playerIDs).Delete(&domain.TrainingPlayer{}).Error; err != nil {
-			tx.Rollback()
 			return fmt.Errorf("failed to remove old training_players: %w", err)
 		}
 	} else {
 		if err := tx.Where("training_id = ?", training.ID).Delete(&domain.TrainingPlayer{}).Error; err != nil {
-			tx.Rollback()
 			return fmt.Errorf("failed to clear training_players: %w", err)
 		}
 	}
 
-	return tx.Commit().Error
+	return nil
 }
 
 func (s *gormStorage) GetRecentVenues(teamID string) []string {
@@ -126,7 +133,7 @@ func (s *gormStorage) GetUpcomingGames(teamID string, limit int) ([]domain.Train
 	if err != nil {
 		return nil, err
 	}
-	return list, nil
+	return list, sortTrainingPlayers(s.db, list)
 }
 
 // GetUpcomingTrainingsByTelegramID возвращает предстоящие тренировки пользователя (кроме матчей) во всех его командах.
@@ -154,15 +161,15 @@ func (s *gormStorage) GetUpcomingTrainingsByTelegramID(telegramID int64, limit i
 	if err != nil {
 		return nil, err
 	}
-	return list, nil
+	return list, sortTrainingPlayers(s.db, list)
 }
 
-// GetApprovedPlayerIDs возвращает player_id утверждённых для данной тренировки/игры (порядок по created_at).
+// GetApprovedPlayerIDs возвращает утверждённых участников в порядке записи.
 func (s *gormStorage) GetApprovedPlayerIDs(trainingID string) ([]string, error) {
 	var ids []string
 	err := s.db.Model(&domain.TrainingPlayer{}).
 		Where("training_id = ? AND approved = ?", trainingID, true).
-		Order("created_at ASC").
+		Order("signup_order ASC").
 		Pluck("player_id", &ids).Error
 	return ids, err
 }

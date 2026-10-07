@@ -67,6 +67,10 @@ func NewGORM(dbPath string) Storage {
 		log.Fatalf("failed to auto-migrate: %v", err)
 	}
 
+	if err := migrateTrainingSignupOrder(db); err != nil {
+		log.Fatalf("failed to migrate training signup order: %v", err)
+	}
+
 	removedDuplicates, err := migrateDuplicateFriends(db)
 	if err != nil {
 		log.Fatalf("failed to migrate duplicate friends: %v", err)
