@@ -23,10 +23,10 @@ func TestPaginatedFriendsKeyboard(t *testing.T) {
 	if got, want := len(navigation), 3; got != want {
 		t.Fatalf("navigation buttons = %d, want %d", got, want)
 	}
-	if got := *navigation[0].CallbackData; got != `frgo_tr:7:{"p":0}` {
+	if got := *navigation[0].CallbackData; got != `frgo_tr:7:{"p":"0"}` {
 		t.Fatalf("previous callback = %q", got)
 	}
-	if got := *navigation[2].CallbackData; got != `frgo_tr:7:{"p":2}` {
+	if got := *navigation[2].CallbackData; got != `frgo_tr:7:{"p":"2"}` {
 		t.Fatalf("next callback = %q", got)
 	}
 }

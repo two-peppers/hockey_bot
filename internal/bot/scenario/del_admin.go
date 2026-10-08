@@ -34,17 +34,20 @@ func askAdminNameForDel(st storage.Storage, chatID int64, userID int64, messageI
 		return nil, fmt.Errorf("no team id found in data")
 	}
 
-	team, err := st.GetTeamByID(teamID)
+	team, err := requireTeamAdmin(st, teamID, userID)
 	if err != nil {
 		return nil, err
 	}
 
-	localTrainingID[userID] = teamID
+	localTrainingID[sessionKey{userID, chatID}] = teamID
 
 	admins := make([]domain.Player, 0)
 	for _, id := range team.Admins {
 		player, err := st.GetPlayer(id, team.ID)
-		if err != nil || player.TelegramID == userID {
+		if err != nil {
+			return nil, err
+		}
+		if player == nil || player.TelegramID == userID {
 			continue
 		}
 		admins = append(admins, *player)
@@ -69,12 +72,12 @@ func askAdminNameForDel(st storage.Storage, chatID int64, userID int64, messageI
 func delAdmin(st storage.Storage, chatID int64, userID int64, messageID int, data Data) (*Action, error) {
 	defer user_state.ClearUserState(userID, chatID)
 
-	teamID, ok := localTrainingID[userID]
+	teamID, ok := localTrainingID[sessionKey{userID, chatID}]
 	if !ok {
 		return nil, fmt.Errorf("no team id found in data")
 	}
 
-	team, err := st.GetTeamByID(teamID)
+	team, err := requireTeamAdmin(st, teamID, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -89,6 +92,12 @@ func delAdmin(st storage.Storage, chatID int64, userID int64, messageID int, dat
 		return nil, err
 	}
 
+	if player == nil {
+		return nil, ErrNotFound
+	}
+	if player.TeamID != team.ID || player.TelegramID == userID {
+		return nil, ErrForbidden
+	}
 	filteredAdmins := make([]int64, 0)
 	for _, id := range team.Admins {
 		if id == player.TelegramID {
@@ -114,5 +123,5 @@ func delAdmin(st storage.Storage, chatID int64, userID int64, messageID int, dat
 	res.AddReply(&replyMsg)
 	res.AddDelete(&deleteMsg)
 
-	return res, nil
+	return res, err
 }

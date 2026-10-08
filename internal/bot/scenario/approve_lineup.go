@@ -24,8 +24,8 @@ type approveLineupState struct {
 	ApprovedIDs map[string]bool
 }
 
-var approveLineupStateByUser = make(map[int64]*approveLineupState)
-var approveLineupMessageID = make(map[int64]int)
+var approveLineupStateByUser = make(map[sessionKey]*approveLineupState)
+var approveLineupMessageID = make(map[sessionKey]int)
 
 func NewApproveLineup() *ApproveLineup {
 	return &ApproveLineup{
@@ -55,6 +55,9 @@ func approveLineupStep0FindGame(st storage.Storage, chatID int64, userID int64, 
 		return res, nil
 	}
 
+	if _, err := requireTeamAdmin(st, teamID, userID); err != nil {
+		return nil, err
+	}
 	games, err := st.GetUpcomingGames(teamID, 10)
 	if err != nil {
 		return nil, err
@@ -67,9 +70,13 @@ func approveLineupStep0FindGame(st storage.Storage, chatID int64, userID int64, 
 		return res, nil
 	}
 
+	delete(approveLineupMessageID, sessionKey{userID, chatID})
 	if len(games) == 1 {
 		g := &games[0]
-		approvedIDs, _ := st.GetApprovedPlayerIDs(g.ID)
+		approvedIDs, err := st.GetApprovedPlayerIDs(g.ID)
+		if err != nil {
+			return nil, err
+		}
 		approvedMap := make(map[string]bool)
 		if len(approvedIDs) == 0 {
 			for _, p := range g.Players {
@@ -80,7 +87,7 @@ func approveLineupStep0FindGame(st storage.Storage, chatID int64, userID int64, 
 				approvedMap[id] = true
 			}
 		}
-		approveLineupStateByUser[userID] = &approveLineupState{
+		approveLineupStateByUser[sessionKey{userID, chatID}] = &approveLineupState{
 			TeamID:      teamID,
 			GameID:      g.ID,
 			ApprovedIDs: approvedMap,
@@ -114,7 +121,7 @@ func approveLineupStep1Manage(st storage.Storage, chatID int64, userID int64, me
 		gameID = data.Get("g")
 	}
 	if gameID == "" {
-		if s, ok := approveLineupStateByUser[userID]; ok {
+		if s, ok := approveLineupStateByUser[sessionKey{userID, chatID}]; ok {
 			gameID = s.GameID
 		}
 	}
@@ -127,18 +134,19 @@ func approveLineupStep1Manage(st storage.Storage, chatID int64, userID int64, me
 		return res, nil
 	}
 
-	game, err := st.GetTrainingByID(gameID)
+	game, err := getTraining(st, gameID)
 	if err != nil || game == nil {
 		res.AddReply(&tgbotapi.MessageConfig{
 			BaseChat: tgbotapi.BaseChat{ChatID: chatID},
 			Text:     "Игру не удалось загрузить.",
 		})
 		user_state.ClearUserState(userID, chatID)
-		return res, nil
+		return res, err
 	}
-	if teamID == "" {
-		teamID = game.TeamID
+	if _, err := requireTeamAdmin(st, game.TeamID, userID); err != nil {
+		return nil, err
 	}
+	teamID = game.TeamID
 	if game.Type != domain.TrainingMatch {
 		res.AddReply(&tgbotapi.MessageConfig{
 			BaseChat: tgbotapi.BaseChat{ChatID: chatID},
@@ -155,15 +163,19 @@ func approveLineupStep1Manage(st storage.Storage, chatID int64, userID int64, me
 	}
 
 	// Восстановить/инициализировать состояние утверждённых (в т.ч. из БД при повторном заходе)
-	state, ok := approveLineupStateByUser[userID]
+	state, ok := approveLineupStateByUser[sessionKey{userID, chatID}]
 	if !ok || state.GameID != gameID {
+		delete(approveLineupMessageID, sessionKey{userID, chatID})
 		state = &approveLineupState{
 			TeamID:      teamID,
 			GameID:      gameID,
 			ApprovedIDs: make(map[string]bool),
 		}
 		// Подгрузить уже утверждённых из БД
-		approvedIDs, _ := st.GetApprovedPlayerIDs(gameID)
+		approvedIDs, err := st.GetApprovedPlayerIDs(gameID)
+		if err != nil {
+			return nil, err
+		}
 		if len(approvedIDs) == 0 {
 			for _, p := range game.Players {
 				state.ApprovedIDs[p.ID] = true
@@ -173,7 +185,7 @@ func approveLineupStep1Manage(st storage.Storage, chatID int64, userID int64, me
 				state.ApprovedIDs[id] = true
 			}
 		}
-		approveLineupStateByUser[userID] = state
+		approveLineupStateByUser[sessionKey{userID, chatID}] = state
 	}
 
 	// Toggle игрока по callback
@@ -185,8 +197,8 @@ func approveLineupStep1Manage(st storage.Storage, chatID int64, userID int64, me
 			state.ApprovedIDs[toggleID] = true
 		}
 		// Первый callback от нашего сообщения (нажатие на игрока) — сохраняем ID сообщения с составом
-		if approveLineupMessageID[userID] == 0 && messageID > 0 {
-			approveLineupMessageID[userID] = messageID
+		if approveLineupMessageID[sessionKey{userID, chatID}] == 0 && messageID > 0 {
+			approveLineupMessageID[sessionKey{userID, chatID}] = messageID
 		}
 	}
 
@@ -194,7 +206,7 @@ func approveLineupStep1Manage(st storage.Storage, chatID int64, userID int64, me
 	text := approvedLineupMessage(game, state.approvedList(game))
 	kb := keyboards.ApproveLineupKeyboard(teamID, gameID, game.Players, approvedSet)
 
-	storedMsgID := approveLineupMessageID[userID]
+	storedMsgID := approveLineupMessageID[sessionKey{userID, chatID}]
 	if storedMsgID > 0 {
 		edit := tgbotapi.NewEditMessageText(chatID, storedMsgID, text)
 		edit.ParseMode = tgbotapi.ModeMarkdown
@@ -285,7 +297,7 @@ func approveLineupStep2Confirm(st storage.Storage, chatID int64, userID int64, m
 		return res, nil
 	}
 
-	state, ok := approveLineupStateByUser[userID]
+	state, ok := approveLineupStateByUser[sessionKey{userID, chatID}]
 	if !ok {
 		res.AddReply(&tgbotapi.MessageConfig{
 			BaseChat: tgbotapi.BaseChat{ChatID: chatID},
@@ -295,18 +307,24 @@ func approveLineupStep2Confirm(st storage.Storage, chatID int64, userID int64, m
 		return res, nil
 	}
 
-	game, err := st.GetTrainingByID(gameID)
+	game, err := getTraining(st, gameID)
 	if err != nil || game == nil {
 		res.AddReply(&tgbotapi.MessageConfig{
 			BaseChat: tgbotapi.BaseChat{ChatID: chatID},
 			Text:     "Игру не удалось загрузить.",
 		})
-		delete(approveLineupStateByUser, userID)
-		delete(approveLineupMessageID, userID)
+		delete(approveLineupStateByUser, sessionKey{userID, chatID})
+		delete(approveLineupMessageID, sessionKey{userID, chatID})
 		user_state.ClearUserState(userID, chatID)
-		return res, nil
+		return res, err
 	}
 
+	if state.GameID != gameID {
+		return nil, ErrForbidden
+	}
+	if _, err := requireTeamAdmin(st, game.TeamID, userID); err != nil {
+		return nil, err
+	}
 	approved := state.approvedList(game)
 
 	// Минимум 5 полевых и 1 вратарь
@@ -333,14 +351,14 @@ func approveLineupStep2Confirm(st storage.Storage, chatID int64, userID int64, m
 			BaseChat: tgbotapi.BaseChat{ChatID: chatID},
 			Text:     "Не удалось сохранить состав.",
 		})
-		delete(approveLineupStateByUser, userID)
-		delete(approveLineupMessageID, userID)
+		delete(approveLineupStateByUser, sessionKey{userID, chatID})
+		delete(approveLineupMessageID, sessionKey{userID, chatID})
 		user_state.ClearUserState(userID, chatID)
-		return res, nil
+		return res, err
 	}
 
 	// Удалить клавиатуру у сообщения тренеру
-	targetMsgID := approveLineupMessageID[userID]
+	targetMsgID := approveLineupMessageID[sessionKey{userID, chatID}]
 	if targetMsgID > 0 {
 		edit := tgbotapi.NewEditMessageText(chatID, targetMsgID, approvedLineupMessage(game, approved))
 		edit.ParseMode = tgbotapi.ModeMarkdown
@@ -366,8 +384,8 @@ func approveLineupStep2Confirm(st storage.Storage, chatID int64, userID int64, m
 	// Убираем все временные сообщения (в том числе клавиатуру выбора игры)
 	res.FlushTemporary = true
 
-	delete(approveLineupStateByUser, userID)
-	delete(approveLineupMessageID, userID)
+	delete(approveLineupStateByUser, sessionKey{userID, chatID})
+	delete(approveLineupMessageID, sessionKey{userID, chatID})
 	user_state.ClearUserState(userID, chatID)
 	return res, nil
 }

@@ -1,29 +1,33 @@
 package user_state
 
+import "sync"
+
 type MessageInfo struct {
 	ChatID    int64
 	MessageID int
 }
 
-var globalMessageBuffer = make(map[int64][]MessageInfo)
+var globalMessageBuffer = make(map[string][]MessageInfo)
+var bufferMu sync.Mutex
 
 func AddToMessageBuffer(chatID int64, userID int64, MessageID int) {
-	if _, ok := globalMessageBuffer[userID]; !ok {
-		globalMessageBuffer[userID] = make([]MessageInfo, 0)
-	}
+	bufferMu.Lock()
+	defer bufferMu.Unlock()
+	key := buildKey(userID, chatID)
 
 	newElem := MessageInfo{
 		ChatID:    chatID,
 		MessageID: MessageID,
 	}
 
-	globalMessageBuffer[userID] = append(globalMessageBuffer[userID], newElem)
+	globalMessageBuffer[key] = append(globalMessageBuffer[key], newElem)
 }
 
-func GetUserMessageBuffer(userID int64) []MessageInfo {
-	if _, ok := globalMessageBuffer[userID]; !ok {
-		return make([]MessageInfo, 0)
-	}
-
-	return globalMessageBuffer[userID]
+func DrainMessageBuffer(userID, chatID int64) []MessageInfo {
+	bufferMu.Lock()
+	defer bufferMu.Unlock()
+	key := buildKey(userID, chatID)
+	messages := globalMessageBuffer[key]
+	delete(globalMessageBuffer, key)
+	return messages
 }

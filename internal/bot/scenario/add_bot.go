@@ -55,11 +55,14 @@ func askTeamNameForChat(st storage.Storage, chatID int64, userID int64, messageI
 
 func addChatIdToTeam(st storage.Storage, chatID int64, userID int64, messageID int, data Data) (*Action, error) {
 	res := NewAction()
+	if chatID >= 0 {
+		return nil, errors.New("команду можно привязать только к группе")
+	}
 	teamID := data.Get("id")
 
-	_, err := st.GetTeamByID(teamID)
+	_, err := requireTeamAdmin(st, teamID, userID)
 	if err != nil {
-		return nil, errors.New("team not found")
+		return nil, err
 	}
 
 	replyMsg := tgbotapi.NewMessage(chatID, "")
@@ -78,7 +81,7 @@ func addChatIdToTeam(st storage.Storage, chatID int64, userID int64, messageID i
 	res.FlushTemporary = true
 	user_state.ClearUserState(userID, chatID)
 
-	return res, nil
+	return res, err
 }
 
 // IsBotAddedToChat проверяет, что бот добавлен в чат

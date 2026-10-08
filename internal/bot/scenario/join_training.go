@@ -19,8 +19,8 @@ type JointTraining struct {
 
 var _ Scenario = (*JointTraining)(nil)
 
-var userTrainingMessageID = make(map[int64]int)
-var userTrainingID = make(map[int64]string)
+var userTrainingMessageID = make(map[sessionKey]int)
+var userTrainingID = make(map[sessionKey]string)
 
 func NewJoinTraining() *JointTraining {
 	return &JointTraining{
@@ -42,7 +42,7 @@ func NewJoinTraining() *JointTraining {
 func askPlayerName(st storage.Storage, chatID int64, userID int64, messageID int, data Data) (*Action, error) {
 	trainingID := data.Get("id")
 
-	training, err := st.GetTrainingByID(trainingID)
+	training, err := getTraining(st, trainingID)
 
 	if err != nil {
 		return nil, err
@@ -50,13 +50,16 @@ func askPlayerName(st storage.Storage, chatID int64, userID int64, messageID int
 
 	player, err := st.GetPlayer(userID, training.TeamID)
 
-	if err == nil && player != nil {
+	if err != nil {
+		return nil, err
+	}
+	if player != nil {
 		data.Set("training_id", trainingID)
 		return confirmPlayerJoin(st, chatID, userID, messageID, data)
 	}
 
-	userTrainingMessageID[userID] = messageID
-	userTrainingID[userID] = trainingID
+	userTrainingMessageID[sessionKey{userID, chatID}] = messageID
+	userTrainingID[sessionKey{userID, chatID}] = trainingID
 	res := NewAction()
 
 	replyMsg := tgbotapi.NewMessage(chatID, fmt.Sprintf("👤 [%s](tg://user?id=%d), как твоя фамилия?", data.Get("username"), userID))
@@ -71,7 +74,7 @@ func askPlayerName(st storage.Storage, chatID int64, userID int64, messageID int
 
 func checkPlayerName(st storage.Storage, chatID int64, userID int64, messageID int, data Data) (*Action, error) {
 	user_state.AddToMessageBuffer(chatID, userID, messageID)
-	player, err := getGlobalUserPlayer(userID)
+	player, err := getGlobalUserPlayer(userID, chatID)
 
 	if err != nil || player == nil {
 		player = &domain.Player{
@@ -80,7 +83,7 @@ func checkPlayerName(st storage.Storage, chatID int64, userID int64, messageID i
 		}
 	}
 
-	training, err := st.GetTrainingByID(userTrainingID[userID])
+	training, err := getTraining(st, userTrainingID[sessionKey{userID, chatID}])
 
 	if err != nil {
 		return nil, err
@@ -100,14 +103,14 @@ func checkPlayerName(st storage.Storage, chatID int64, userID int64, messageID i
 
 	player.FullName = fullName
 	player.TeamID = training.TeamID
-	saveGlobalUserPlayer(userID, *player)
+	saveGlobalUserPlayer(userID, chatID, *player)
 	user_state.SetUserState(userID, chatID, "go_tr:2")
 
 	return askPlayerPosition(st, chatID, userID, messageID, data)
 }
 
 func askPlayerPosition(st storage.Storage, chatID int64, userID int64, messageID int, data Data) (*Action, error) {
-	player, err := getGlobalUserPlayer(userID)
+	player, err := getGlobalUserPlayer(userID, chatID)
 
 	if err != nil {
 		user_state.ClearUserState(userID, chatID)
@@ -126,7 +129,7 @@ func askPlayerPosition(st storage.Storage, chatID int64, userID int64, messageID
 }
 
 func checkPlayerPosition(st storage.Storage, chatID int64, userID int64, messageID int, data Data) (*Action, error) {
-	player, err := getGlobalUserPlayer(userID)
+	player, err := getGlobalUserPlayer(userID, chatID)
 
 	if err != nil {
 		user_state.ClearUserState(userID, chatID)
@@ -136,14 +139,14 @@ func checkPlayerPosition(st storage.Storage, chatID int64, userID int64, message
 	position := data.Get("position")
 	player.Position = domain.PlayerPosition(position)
 
-	trainingMessageID, ok := userTrainingMessageID[userID]
+	trainingMessageID, ok := userTrainingMessageID[sessionKey{userID, chatID}]
 	if !ok {
 		user_state.ClearUserState(userID, chatID)
 		return nil, errors.New("trainingID not found")
 	}
 
 	if player.Position == domain.PositionGoalkeeper {
-		saveGlobalUserPlayer(userID, *player)
+		saveGlobalUserPlayer(userID, chatID, *player)
 		return askGoalkeeperCommercial(st, chatID, userID, trainingMessageID, data)
 	}
 
@@ -154,7 +157,7 @@ func checkPlayerPosition(st storage.Storage, chatID int64, userID int64, message
 		return nil, err
 	}
 
-	trainingID, ok := userTrainingID[userID]
+	trainingID, ok := userTrainingID[sessionKey{userID, chatID}]
 	if !ok {
 		user_state.ClearUserState(userID, chatID)
 		return nil, errors.New("trainingID not found")
@@ -168,7 +171,7 @@ func checkPlayerPosition(st storage.Storage, chatID int64, userID int64, message
 func askGoalkeeperCommercial(st storage.Storage, chatID int64, userID int64, messageID int, data Data) (*Action, error) {
 	res := NewAction()
 
-	player, err := getGlobalUserPlayer(userID)
+	player, err := getGlobalUserPlayer(userID, chatID)
 	if err != nil {
 		user_state.ClearUserState(userID, chatID)
 		return nil, err
@@ -184,7 +187,7 @@ func askGoalkeeperCommercial(st storage.Storage, chatID int64, userID int64, mes
 }
 
 func checkGoalkeeperCommercial(st storage.Storage, chatID int64, userID int64, messageID int, data Data) (*Action, error) {
-	player, err := getGlobalUserPlayer(userID)
+	player, err := getGlobalUserPlayer(userID, chatID)
 	if err != nil {
 		user_state.ClearUserState(userID, chatID)
 		return nil, err
@@ -192,7 +195,7 @@ func checkGoalkeeperCommercial(st storage.Storage, chatID int64, userID int64, m
 
 	player.Commercial = data.Get("comm") == "true"
 
-	trainingMessageID, ok := userTrainingMessageID[userID]
+	trainingMessageID, ok := userTrainingMessageID[sessionKey{userID, chatID}]
 	if !ok {
 		user_state.ClearUserState(userID, chatID)
 		return nil, errors.New("trainingID not found")
@@ -204,7 +207,7 @@ func checkGoalkeeperCommercial(st storage.Storage, chatID int64, userID int64, m
 		return nil, err
 	}
 
-	trainingID, ok := userTrainingID[userID]
+	trainingID, ok := userTrainingID[sessionKey{userID, chatID}]
 	if !ok {
 		user_state.ClearUserState(userID, chatID)
 		return nil, errors.New("trainingID not found")
@@ -218,7 +221,7 @@ func checkGoalkeeperCommercial(st storage.Storage, chatID int64, userID int64, m
 func confirmPlayerJoin(st storage.Storage, chatID int64, userID int64, messageID int, data Data) (*Action, error) {
 	res := NewAction()
 
-	training, err := st.GetTrainingByID(data.Get("training_id"))
+	training, err := getTraining(st, data.Get("training_id"))
 	if err != nil {
 		user_state.ClearUserState(userID, chatID)
 		return nil, err
@@ -231,14 +234,23 @@ func confirmPlayerJoin(st storage.Storage, chatID int64, userID int64, messageID
 		return nil, err
 	}
 
-	training.AddPlayer(player)
-	st.SaveTraining(training)
+	if player == nil {
+		return nil, ErrNotFound
+	}
+	if err := st.AddTrainingPlayer(training.ID, player.ID); err != nil {
+		return nil, err
+	}
+	training, err = getTraining(st, training.ID)
+	if err != nil {
+		return nil, err
+	}
 
 	keyboard := keyboards.TakePartKeyboard("tr", training.ID)
 	editMsg := tgbotapi.NewEditMessageText(chatID, messageID, training.String())
 	editMsg.ParseMode = tgbotapi.ModeMarkdown
 	editMsg.ReplyMarkup = &keyboard
 
+	res.RefreshTrainingID = training.ID
 	res.AddEdit(&editMsg)
 	if chatID > 0 && training.Team.ChatID != nil && *training.Team.ChatID != 0 && training.TeamMessageID != 0 {
 		teamEdit := tgbotapi.NewEditMessageText(*training.Team.ChatID, training.TeamMessageID, training.String())
@@ -248,10 +260,10 @@ func confirmPlayerJoin(st storage.Storage, chatID int64, userID int64, messageID
 	}
 	res.FlushTemporary = true
 
-	delete(userTrainingMessageID, userID)
-	delete(userTrainingID, userID)
+	delete(userTrainingMessageID, sessionKey{userID, chatID})
+	delete(userTrainingID, sessionKey{userID, chatID})
 	user_state.ClearUserState(userID, chatID)
-	clearGlobalUserPlayer(userID)
+	clearGlobalUserPlayer(userID, chatID)
 
 	return res, nil
 }

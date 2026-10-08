@@ -33,7 +33,7 @@ func showTeams(st storage.Storage, chatID int64, userID int64, messageID int, da
 	res := NewAction()
 
 	deleteMsg := tgbotapi.NewDeleteMessage(chatID, messageID)
-	teams, err := st.GetTeamsByAdmin(chatID)
+	teams, err := st.GetTeamsByAdmin(userID)
 
 	if err != nil {
 		return nil, err
@@ -72,7 +72,7 @@ func manageOneTeam(st storage.Storage, chatID int64, userID int64, messageID int
 		return nil, errors.New("no team_id in callback data")
 	}
 
-	team, err := st.GetTeamByID(teamID)
+	team, err := requireTeamAdmin(st, teamID, userID)
 	if err != nil {
 		return nil, err
 	}

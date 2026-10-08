@@ -2,7 +2,9 @@ package bot
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"hockey_bot/internal/bot/keyboards"
 	"hockey_bot/internal/bot/scenario"
 	state "hockey_bot/internal/bot/user_state"
 	"hockey_bot/internal/pendingreply"
@@ -10,6 +12,7 @@ import (
 	"log"
 	"strconv"
 	"strings"
+	"sync"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
@@ -74,9 +77,27 @@ func executeRoute(bot *tgbotapi.BotAPI, store storage.Storage, chatID int64, use
 	action, err := step(store, chatID, userID, messageID, dt)
 
 	if err != nil {
-		return nil
+		log.Printf("scenario %s step %d user %d chat %d: %v", sc, st, userID, chatID, err)
+		if action == nil || len(action.Reply) == 0 {
+			action = scenario.NewAction()
+			text := "Не удалось выполнить действие. Попробуй ещё раз."
+			if errors.Is(err, scenario.ErrForbidden) || errors.Is(err, scenario.ErrNotFound) {
+				text = err.Error()
+				state.ClearUserState(userID, chatID)
+			}
+			msg := tgbotapi.NewMessage(chatID, text)
+			action.AddReply(&msg)
+		}
 	}
 
+	return executeAction(bot, store, chatID, userID, action)
+}
+
+// Обновления составов из разных чатов отправляем последовательно и всегда
+// перечитываем БД: более старый Action не затрёт новое состояние сообщения.
+var trainingRenderMu sync.Mutex
+
+func executeAction(bot *tgbotapi.BotAPI, store storage.Storage, chatID, userID int64, action *scenario.Action) *scenario.Action {
 	if action == nil {
 		return nil
 	}
@@ -84,6 +105,24 @@ func executeRoute(bot *tgbotapi.BotAPI, store storage.Storage, chatID int64, use
 	// Если задан алерт для callback — остальное не выполняем, алерт покажет handleCallback
 	if action.CallbackAlert != "" {
 		return action
+	}
+
+	if action.RefreshTrainingID != "" {
+		trainingRenderMu.Lock()
+		defer trainingRenderMu.Unlock()
+		training, err := store.GetTrainingByID(action.RefreshTrainingID)
+		if err != nil || training == nil {
+			log.Printf("failed to reload training %s for display: %v", action.RefreshTrainingID, err)
+			msg := tgbotapi.NewMessage(chatID, "Запись обновлена, но состав не удалось загрузить. Открой тренировку заново.")
+			action.AddReply(&msg)
+			action.Edit = nil
+		} else {
+			keyboard := keyboards.TakePartKeyboard("tr", training.ID)
+			for _, edit := range action.Edit {
+				edit.Text = training.String()
+				edit.ReplyMarkup = &keyboard
+			}
+		}
 	}
 
 	if len(action.Reply) > 0 {
@@ -110,7 +149,7 @@ func executeRoute(bot *tgbotapi.BotAPI, store storage.Storage, chatID int64, use
 			reply.DisableNotification = true
 			sentMsg, err := bot.Send(reply)
 			if err == nil {
-				state.AddToMessageBuffer(chatID, userID, sentMsg.MessageID)
+				state.AddToMessageBuffer(sentMsg.Chat.ID, userID, sentMsg.MessageID)
 
 				// Если для действия задан контекст ожидаемого ответа,
 				// регистрируем его с учетом фактических данных отправленного сообщения.
@@ -120,35 +159,52 @@ func executeRoute(bot *tgbotapi.BotAPI, store storage.Storage, chatID int64, use
 					ctx.QuestionMessageID = sentMsg.MessageID
 					pendingreply.Register(bot, store, &ctx)
 				}
-			} else if action.CoachNotificationOnDMFailure != nil && reply.ChatID == action.CoachNotificationOnDMFailure.QuestionChatID {
-				// Личное сообщение игроку не доставлено — уведомляем тренеров через Action.
-				log.Printf("failed to send cancel reason question to user %d: %v", reply.ChatID, err)
-				// Ответ уже не ожидается: не оставляем сценарий причины отмены,
-				// который мог бы обработать следующее случайное сообщение пользователя.
-				state.ClearUserState(
-					action.CoachNotificationOnDMFailure.UserID,
-					action.CoachNotificationOnDMFailure.QuestionChatID,
-				)
-				notifyCoachesCancelWithoutDM(bot, store, action.CoachNotificationOnDMFailure)
+			} else {
+				log.Printf("failed to send temporary reply to chat %d: %v", reply.ChatID, err)
+				if action.CoachNotificationOnDMFailure != nil && reply.ChatID == action.CoachNotificationOnDMFailure.QuestionChatID {
+					// Личное сообщение игроку не доставлено — уведомляем тренеров через Action.
+					log.Printf("failed to send cancel reason question to user %d: %v", reply.ChatID, err)
+					// Ответ уже не ожидается: не оставляем сценарий причины отмены,
+					// который мог бы обработать следующее случайное сообщение пользователя.
+					state.ClearUserStateIf(
+						action.CoachNotificationOnDMFailure.UserID,
+						action.CoachNotificationOnDMFailure.QuestionChatID,
+						action.CoachNotificationOnDMFailure.ReplyState,
+					)
+					notifyCoachesCancelWithoutDM(bot, store, action.CoachNotificationOnDMFailure)
+				}
 			}
 		}
 	}
 
 	if len(action.Edit) > 0 {
 		for _, edit := range action.Edit {
-			go bot.Send(edit)
+			if _, err := bot.Request(edit); err != nil && !strings.Contains(err.Error(), "message is not modified") {
+				log.Printf("failed to edit message %d in chat %d: %v", edit.MessageID, edit.ChatID, err)
+				msg := tgbotapi.NewMessage(chatID, "Не удалось обновить сообщение. Открой тренировку или меню заново, чтобы увидеть актуальные данные.")
+				if _, sendErr := bot.Send(msg); sendErr != nil {
+					log.Printf("failed to report edit error: %v", sendErr)
+				}
+			}
 		}
 	}
 
 	if len(action.Delete) > 0 {
 		for _, del := range action.Delete {
-			go bot.Request(del)
+			requestLogged(bot, del, "delete message")
 		}
 	}
 
 	if len(action.Pin) > 0 {
 		for _, pin := range action.Pin {
 			sentMsg, err := bot.Send(pin)
+			if err != nil {
+				log.Printf("failed to publish pinned message to chat %d: %v", pin.ChatID, err)
+				msg := tgbotapi.NewMessage(chatID, "Данные сохранены, но опубликовать сообщение в чате не удалось. Проверь права бота.")
+				if _, sendErr := bot.Send(msg); sendErr != nil {
+					log.Printf("failed to report publication error: %v", sendErr)
+				}
+			}
 
 			if err == nil {
 				pinReq := tgbotapi.PinChatMessageConfig{
@@ -157,7 +213,7 @@ func executeRoute(bot *tgbotapi.BotAPI, store storage.Storage, chatID int64, use
 					DisableNotification: true,
 				}
 
-				bot.Request(pinReq)
+				requestLogged(bot, pinReq, "pin message")
 
 				// Если нужно сохранить message_id исходного сообщения тренировки в командном чате
 				if action.TeamMessageTrainingID != "" {
@@ -179,9 +235,9 @@ func executeRoute(bot *tgbotapi.BotAPI, store storage.Storage, chatID int64, use
 	}
 
 	if action.FlushTemporary {
-		for _, msg := range state.GetUserMessageBuffer(userID) {
+		for _, msg := range state.DrainMessageBuffer(userID, chatID) {
 			delMsg := tgbotapi.NewDeleteMessage(msg.ChatID, msg.MessageID)
-			go bot.Send(delMsg)
+			requestLogged(bot, delMsg, "delete temporary message")
 		}
 	}
 
@@ -190,47 +246,54 @@ func executeRoute(bot *tgbotapi.BotAPI, store storage.Storage, chatID int64, use
 			ChatID: chatID,
 		}
 
-		go bot.Send(leave)
+		requestLogged(bot, leave, "leave chat")
 	}
 
 	return action
 }
 
-func route(userID int64, chatID int64) (string, int, scenario.Data) {
-	userState := state.GetUserState(userID, chatID)
-
-	if len(userState) > 0 {
-		log.Printf("Current user state: %s", userState)
-	} else {
-		log.Printf("Current user state is empty")
+func requestLogged(bot *tgbotapi.BotAPI, request tgbotapi.Chattable, operation string) {
+	if _, err := bot.Request(request); err != nil {
+		log.Printf("%s: %v", operation, err)
 	}
+}
 
-	if userState == "" {
+func parseRoute(value string) (string, int, scenario.Data, error) {
+	parts := strings.SplitN(value, ":", 3)
+	if len(parts) < 2 {
+		return "", 0, nil, fmt.Errorf("invalid route")
+	}
+	step, err := strconv.Atoi(parts[1])
+	if err != nil || step < 0 {
+		return "", 0, nil, fmt.Errorf("invalid step")
+	}
+	scen, err := getScenario(parts[0])
+	if err != nil {
+		return "", 0, nil, err
+	}
+	if _, err := scen.GetStep(step); err != nil {
+		return "", 0, nil, err
+	}
+	data := make(scenario.Data)
+	if len(parts) == 3 {
+		if err := json.Unmarshal([]byte(parts[2]), &data); err != nil {
+			return "", 0, nil, err
+		}
+	}
+	return parts[0], step, data, nil
+}
+
+func route(userID int64, chatID int64) (string, int, scenario.Data) {
+	value := state.GetUserState(userID, chatID)
+	if value == "" {
 		return "", 0, nil
 	}
-
-	parts := strings.SplitN(userState, ":", 3)
-
-	if len(parts) < 2 {
+	scen, step, data, err := parseRoute(value)
+	if err != nil {
+		log.Printf("invalid route for user %d in chat %d: %v", userID, chatID, err)
 		state.ClearUserState(userID, chatID)
 		return "", 0, nil
 	}
-
-	scen := parts[0]
-
-	step, err := strconv.Atoi(parts[1])
-	if err != nil {
-		return scen, 0, nil
-	}
-
-	data := make(scenario.Data)
-
-	if len(parts) == 3 && parts[2] != "" {
-		if err := json.Unmarshal([]byte(parts[2]), &data); err != nil {
-			return scen, step, nil
-		}
-	}
-
 	return scen, step, data
 }
 

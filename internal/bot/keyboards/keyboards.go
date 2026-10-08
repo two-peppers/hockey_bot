@@ -228,11 +228,11 @@ func PaginatedFriendsKeyboard(prefix, eventType string, selectStep, pageStep, pa
 
 	var navigation []tgbotapi.InlineKeyboardButton
 	if page > 0 {
-		navigation = append(navigation, tgbotapi.NewInlineKeyboardButtonData("⬅️ Назад", fmt.Sprintf("%s_%s:%d:{\"p\":%d}", prefix, eventType, pageStep, page-1)))
+		navigation = append(navigation, tgbotapi.NewInlineKeyboardButtonData("⬅️ Назад", fmt.Sprintf("%s_%s:%d:{\"p\":\"%d\"}", prefix, eventType, pageStep, page-1)))
 	}
-	navigation = append(navigation, tgbotapi.NewInlineKeyboardButtonData(fmt.Sprintf("%d/%d", page+1, pageCount), fmt.Sprintf("%s_%s:%d:{\"p\":%d}", prefix, eventType, pageStep, page)))
+	navigation = append(navigation, tgbotapi.NewInlineKeyboardButtonData(fmt.Sprintf("%d/%d", page+1, pageCount), fmt.Sprintf("%s_%s:%d:{\"p\":\"%d\"}", prefix, eventType, pageStep, page)))
 	if page+1 < pageCount {
-		navigation = append(navigation, tgbotapi.NewInlineKeyboardButtonData("Вперёд ➡️", fmt.Sprintf("%s_%s:%d:{\"p\":%d}", prefix, eventType, pageStep, page+1)))
+		navigation = append(navigation, tgbotapi.NewInlineKeyboardButtonData("Вперёд ➡️", fmt.Sprintf("%s_%s:%d:{\"p\":\"%d\"}", prefix, eventType, pageStep, page+1)))
 	}
 	keyboard.InlineKeyboard = append(keyboard.InlineKeyboard, navigation)
 	return keyboard
