@@ -51,7 +51,8 @@ func createTeamWithName(st storage.Storage, chatID int64, userID int64, messageI
 	name := data["message"]
 	res := NewAction()
 
-	if _, err := st.GetTeamByName(name); err != nil {
+	existing, err := st.GetTeamByName(name)
+	if err != nil {
 		return nil, err // ошибка БД
 	}
 
@@ -59,7 +60,7 @@ func createTeamWithName(st storage.Storage, chatID int64, userID int64, messageI
 	replyMsg.ReplyToMessageID = messageID
 	replyMsg.ParseMode = tgbotapi.ModeMarkdown
 
-	if _, err := st.GetTeamByName(name); err != nil {
+	if existing != nil {
 		replyMsg.Text = "❌ Команда с таким названием уже существует!"
 		res.AddReply(&replyMsg)
 

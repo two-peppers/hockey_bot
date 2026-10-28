@@ -32,6 +32,8 @@ type Storage interface {
 	GetPlayersByTelegramID(teamId string, telegramID int64) ([]domain.Player, error)
 	GetPlayersByTeamID(teamId string) ([]domain.Player, error)
 	SaveTraining(training *domain.Training) error
+	AddTrainingPlayer(trainingID, playerID string) error
+	RemoveTrainingPlayer(trainingID, playerID string) error
 	GetUpcomingGames(teamID string, limit int) ([]domain.Training, error)
 	GetUpcomingTrainingsByTelegramID(telegramID int64, limit int) ([]domain.Training, error)
 	GetApprovedPlayerIDs(trainingID string) ([]string, error)

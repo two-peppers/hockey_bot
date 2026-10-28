@@ -7,7 +7,6 @@ import (
 	"hockey_bot/internal/domain"
 	"hockey_bot/internal/storage"
 	"strconv"
-	"strings"
 	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
@@ -48,7 +47,7 @@ func askTrainingDate(st storage.Storage, chatID int64, userID int64, messageID i
 	res := &Action{}
 
 	teamID := data["team_id"]
-	team, err := st.GetTeamByID(teamID)
+	team, err := requireTeamAdmin(st, teamID, userID)
 
 	if err != nil {
 		return nil, err
@@ -78,56 +77,29 @@ func askTrainingDate(st storage.Storage, chatID int64, userID int64, messageID i
 
 	user_state.SetUserState(userID, chatID, "train:1")
 
-	saveGlobalUserTraining(userID, training)
+	saveGlobalUserTraining(userID, chatID, training)
 
 	return res, nil
 }
 
 func checkTrainingDate(st storage.Storage, chatID int64, userID int64, messageID int, data Data) (*Action, error) {
-	training, err := getGlobalUserTraining(userID)
+	training, err := getGlobalUserTraining(userID, chatID)
 
 	if err != nil {
 		return nil, err
 	}
 
-	now := time.Now()
-	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
-
-	message := data["message"]
-
-	switch message {
-	case "Сегодня":
-		training.Date = today
-		break
-	case "Завтра":
-		training.Date = today.Add(24 * time.Hour)
-		break
-	case "Послезавтра":
-		training.Date = today.Add(2 * 24 * time.Hour)
-		break
-	case "+3 дня":
-		training.Date = today.Add(3 * 24 * time.Hour)
-		break
-	default:
-		var replyMsgText string
-		date, err := time.Parse("02.01.2006", message)
-
-		if err != nil {
-			replyMsgText = "Неверный формат даты. Введи дату в формате ДД.ММ.ГГГГ"
-			replyMsg := tgbotapi.NewMessage(chatID, replyMsgText)
-			replyMsg.ParseMode = tgbotapi.ModeMarkdown
-
-			res := NewAction()
-			res.AddReply(&replyMsg)
-
-			return res, nil
-		}
-
-		training.Date = date
+	date, err := parseEventDate(data["message"], time.Now())
+	if err != nil {
+		res := NewAction()
+		reply := tgbotapi.NewMessage(chatID, "Неверный формат даты. Введи дату в формате ДД.ММ.ГГГГ")
+		res.AddReply(&reply)
+		return res, nil
 	}
+	training.Date = date
 
 	user_state.SetUserState(userID, chatID, "train:4") // Спрашиваем про время тренировки
-	saveGlobalUserTraining(userID, *training)
+	saveGlobalUserTraining(userID, chatID, *training)
 
 	return askTrainingTime(st, chatID, userID, messageID, data)
 }
@@ -147,7 +119,7 @@ func checkExactTrainingDate(st storage.Storage, chatID int64, userID int64, mess
 	res := &Action{}
 
 	message := data["message"]
-	date, err := time.Parse("02.01.2006", message)
+	date, err := time.ParseInLocation("02.01.2006", message, time.Local)
 
 	replyMsg := tgbotapi.NewMessage(chatID, "")
 	replyMsg.ParseMode = tgbotapi.ModeMarkdown
@@ -160,7 +132,7 @@ func checkExactTrainingDate(st storage.Storage, chatID int64, userID int64, mess
 		return res, nil
 	}
 
-	training, err := getGlobalUserTraining(userID)
+	training, err := getGlobalUserTraining(userID, chatID)
 
 	if err != nil {
 		user_state.SetUserState(userID, chatID, "train:0")
@@ -168,7 +140,7 @@ func checkExactTrainingDate(st storage.Storage, chatID int64, userID int64, mess
 	}
 
 	training.Date = date
-	saveGlobalUserTraining(userID, *training)
+	saveGlobalUserTraining(userID, chatID, *training)
 	user_state.SetUserState(userID, chatID, "train:5") // Переходим к времени тренировки
 
 	return askTrainingTime(st, chatID, userID, messageID, data)
@@ -195,30 +167,21 @@ func checkTrainingTime(st storage.Storage, chatID int64, userID int64, messageID
 	replyMsg := tgbotapi.NewMessage(chatID, "")
 	replyMsg.ParseMode = tgbotapi.ModeMarkdown
 
-	parts := strings.Split(text, ":")
-	if len(parts) != 2 {
+	clock, err := time.Parse("15:04", text)
+	if err != nil {
 		replyMsg.Text = "❌ Неверный формат времени. Введи время в формате *ЧЧ:ММ*."
 		res.AddReply(&replyMsg)
 		return res, nil
 	}
 
-	hours, _ := strconv.Atoi(parts[0])
-	minutes, _ := strconv.Atoi(parts[1])
-
-	if hours < 0 || hours > 23 || minutes < 0 || minutes > 59 {
-		replyMsg.Text = "❌ Неверный формат времени. Введи время в формате *ЧЧ:ММ*."
-		res.AddReply(&replyMsg)
-		return res, nil
-	}
-
-	training, err := getGlobalUserTraining(userID)
+	training, err := getGlobalUserTraining(userID, chatID)
 
 	if err != nil {
 		return nil, err
 	}
 
-	training.Date = training.Date.Add(time.Duration(hours) * time.Hour).Add(time.Duration(minutes) * time.Minute)
-	saveGlobalUserTraining(userID, *training)
+	training.Date = time.Date(training.Date.Year(), training.Date.Month(), training.Date.Day(), clock.Hour(), clock.Minute(), 0, 0, training.Date.Location())
+	saveGlobalUserTraining(userID, chatID, *training)
 
 	user_state.SetUserState(userID, chatID, "train:6") // Спрашиваем про арену
 
@@ -228,7 +191,7 @@ func checkTrainingTime(st storage.Storage, chatID int64, userID int64, messageID
 func askTrainingVenue(st storage.Storage, chatID int64, userID int64, messageID int, data Data) (*Action, error) {
 	res := NewAction()
 
-	training, err := getGlobalUserTraining(userID)
+	training, err := getGlobalUserTraining(userID, chatID)
 
 	if err != nil {
 		return nil, err
@@ -250,7 +213,7 @@ func askTrainingVenue(st storage.Storage, chatID int64, userID int64, messageID 
 }
 
 func checkTrainingVenue(st storage.Storage, chatID int64, userID int64, messageID int, data Data) (*Action, error) {
-	training, err := getGlobalUserTraining(userID)
+	training, err := getGlobalUserTraining(userID, chatID)
 
 	if err != nil {
 		return nil, err
@@ -259,7 +222,7 @@ func checkTrainingVenue(st storage.Storage, chatID int64, userID int64, messageI
 	venue := data["message"]
 	training.Venue = venue
 
-	saveGlobalUserTraining(userID, *training)
+	saveGlobalUserTraining(userID, chatID, *training)
 
 	return askTrainingFormat(st, chatID, userID, messageID, data)
 }
@@ -279,12 +242,15 @@ func askTrainingFormat(st storage.Storage, chatID int64, userID int64, messageID
 }
 
 func checkTrainingFormat(st storage.Storage, chatID int64, userID int64, messageID int, data Data) (*Action, error) {
-	training, _ := getGlobalUserTraining(userID)
+	training, err := getGlobalUserTraining(userID, chatID)
+	if err != nil {
+		return nil, err
+	}
 
 	trainingType := data["type"]
 	training.Type = domain.TrainingType(trainingType)
 
-	saveGlobalUserTraining(userID, *training)
+	saveGlobalUserTraining(userID, chatID, *training)
 
 	action := NewAction()
 
@@ -316,7 +282,7 @@ func askTrainingCapacity(st storage.Storage, chatID int64, userID int64, message
 }
 
 func checkTrainingCapacity(st storage.Storage, chatID int64, userID int64, messageID int, data Data) (*Action, error) {
-	training, err := getGlobalUserTraining(userID)
+	training, err := getGlobalUserTraining(userID, chatID)
 
 	if err != nil {
 		return nil, err
@@ -324,8 +290,8 @@ func checkTrainingCapacity(st storage.Storage, chatID int64, userID int64, messa
 
 	capacity, err := strconv.Atoi(data["message"])
 
-	if err != nil {
-		replyMsg := tgbotapi.NewMessage(chatID, "❌ Количество может быть только числом. Попробуй еще раз.")
+	if err != nil || capacity <= 0 {
+		replyMsg := tgbotapi.NewMessage(chatID, "❌ Количество должно быть положительным целым числом. Попробуй еще раз.")
 		replyMsg.ParseMode = tgbotapi.ModeMarkdown
 
 		res := NewAction()
@@ -335,7 +301,7 @@ func checkTrainingCapacity(st storage.Storage, chatID int64, userID int64, messa
 	}
 
 	training.Capacity = capacity
-	saveGlobalUserTraining(userID, *training)
+	saveGlobalUserTraining(userID, chatID, *training)
 
 	action, err := askTrainingBottomMessage(st, chatID, userID, messageID, data)
 
@@ -362,10 +328,10 @@ func askTrainingBottomMessage(st storage.Storage, chatID int64, userID int64, me
 }
 
 func checkTrainingBottomMessageAndCreateTraining(st storage.Storage, chatID int64, userID int64, messageID int, data Data) (*Action, error) {
-	defer clearGlobalUserTraining(userID)
+	defer clearGlobalUserTraining(userID, chatID)
 	defer user_state.ClearUserState(userID, chatID)
 
-	training, err := getGlobalUserTraining(userID)
+	training, err := getGlobalUserTraining(userID, chatID)
 	if err != nil {
 		return nil, err
 	}
@@ -383,6 +349,15 @@ func checkTrainingBottomMessageAndCreateTraining(st storage.Storage, chatID int6
 
 	replyMsg := tgbotapi.NewMessage(chatID, "")
 	replyMsg.ParseMode = tgbotapi.ModeMarkdown
+
+	team, err := requireTeamAdmin(st, training.TeamID, userID)
+	if err != nil {
+		return nil, err
+	}
+	training.Team = *team
+	if team.ChatID == nil {
+		return nil, ErrNotFound
+	}
 
 	err = st.CreateTraining(training)
 	if err != nil {
@@ -406,5 +381,5 @@ func checkTrainingBottomMessageAndCreateTraining(st storage.Storage, chatID int6
 
 	res.AddReply(&replyMsg)
 
-	return res, nil
+	return res, err
 }

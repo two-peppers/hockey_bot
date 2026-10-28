@@ -16,7 +16,7 @@ type SetAdmin struct {
 
 var _ Scenario = (*SetAdmin)(nil)
 
-var localTrainingID = make(map[int64]string)
+var localTrainingID = make(map[sessionKey]string)
 
 func NewSetAdmin() *SetAdmin {
 	return &SetAdmin{
@@ -36,12 +36,12 @@ func askAdminNameForSet(st storage.Storage, chatID int64, userID int64, messageI
 		return nil, fmt.Errorf("no team id found in data")
 	}
 
-	team, err := st.GetTeamByID(teamID)
+	team, err := requireTeamAdmin(st, teamID, userID)
 	if err != nil {
 		return nil, err
 	}
 
-	localTrainingID[userID] = teamID
+	localTrainingID[sessionKey{userID, chatID}] = teamID
 
 	players, err := st.GetPlayersByTeamID(team.ID)
 	if err != nil {
@@ -70,12 +70,12 @@ func askAdminNameForSet(st storage.Storage, chatID int64, userID int64, messageI
 func setAdmin(st storage.Storage, chatID int64, userID int64, messageID int, data Data) (*Action, error) {
 	defer user_state.ClearUserState(userID, chatID)
 
-	teamID, ok := localTrainingID[userID]
+	teamID, ok := localTrainingID[sessionKey{userID, chatID}]
 	if !ok {
 		return nil, fmt.Errorf("no team id found in data")
 	}
 
-	team, err := st.GetTeamByID(teamID)
+	team, err := requireTeamAdmin(st, teamID, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -90,6 +90,12 @@ func setAdmin(st storage.Storage, chatID int64, userID int64, messageID int, dat
 		return nil, err
 	}
 
+	if player == nil {
+		return nil, ErrNotFound
+	}
+	if player.TeamID != team.ID {
+		return nil, ErrForbidden
+	}
 	team.Admins = append(team.Admins, player.TelegramID)
 
 	replyMsg := tgbotapi.NewMessage(chatID, "")
@@ -108,5 +114,5 @@ func setAdmin(st storage.Storage, chatID int64, userID int64, messageID int, dat
 	res.AddReply(&replyMsg)
 	res.AddDelete(&deleteMsg)
 
-	return res, nil
+	return res, err
 }

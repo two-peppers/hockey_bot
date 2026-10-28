@@ -2,6 +2,7 @@ package pendingreply
 
 import (
 	"fmt"
+	"hockey_bot/internal/bot/user_state"
 	"hockey_bot/internal/storage"
 	"log"
 	"sync"
@@ -14,6 +15,8 @@ import (
 // Сейчас используется для причины отмены тренировки, но может быть переиспользован
 // в других сценариях, где нужно дождаться ответа и по таймауту выполнить действие.
 type PendingReplyContext struct {
+	RequestID         string
+	ReplyState        string
 	UserID            int64
 	Username          string
 	PlayerFullName    string
@@ -29,10 +32,15 @@ type key struct {
 }
 
 var (
-	mu       sync.Mutex
-	pending  = make(map[key]*PendingReplyContext)
-	timeout  = 10 * time.Minute
+	mu      sync.Mutex
+	pending = make(map[key]*pendingEntry)
+	timeout = 10 * time.Minute
 )
+
+type pendingEntry struct {
+	context PendingReplyContext
+	timer   *time.Timer
+}
 
 // Register регистрирует ожидание ответа и запускает таймер.
 func Register(bot *tgbotapi.BotAPI, store storage.Storage, ctx *PendingReplyContext) {
@@ -46,22 +54,28 @@ func Register(bot *tgbotapi.BotAPI, store storage.Storage, ctx *PendingReplyCont
 	}
 
 	mu.Lock()
-	pending[k] = ctx
-	mu.Unlock()
-
-	go func(localCtx *PendingReplyContext, localKey key) {
-		time.Sleep(timeout)
+	if old := pending[k]; old != nil {
+		old.timer.Stop()
+	}
+	entry := &pendingEntry{context: *ctx}
+	pending[k] = entry
+	entry.timer = time.AfterFunc(timeout, func() {
+		localCtx := &entry.context
 
 		mu.Lock()
-		current, ok := pending[localKey]
-		if !ok || current != localCtx {
+		current, ok := pending[k]
+		if !ok || current != entry {
 			// Уже обработано или переопределено новым ожиданием.
 			mu.Unlock()
 			return
 		}
 		// Удаляем из pending перед выполнением действий.
-		delete(pending, localKey)
+		delete(pending, k)
 		mu.Unlock()
+
+		if localCtx.ReplyState != "" {
+			user_state.ClearUserStateIf(localCtx.UserID, localCtx.QuestionChatID, localCtx.ReplyState)
+		}
 
 		// Удаляем вопрос пользователю, если можем.
 		if localCtx.QuestionChatID != 0 && localCtx.QuestionMessageID != 0 {
@@ -102,19 +116,30 @@ func Register(bot *tgbotapi.BotAPI, store storage.Storage, ctx *PendingReplyCont
 				log.Printf("failed to notify admin %d about cancel without reason: %v", adminID, err)
 			}
 		}
-	}(ctx, k)
+	})
+	mu.Unlock()
 }
 
 // Resolve помечает ожидание как выполненное (пользователь ответил), чтобы
 // по таймауту не отправлять уведомление «без комментариев».
-func Resolve(userID int64, trainingID string) {
+func Resolve(userID int64, trainingID string) bool {
+	return resolve(userID, trainingID, "")
+}
+
+// ResolveRequest не позволяет ответу на старый вопрос отменить новое ожидание.
+func ResolveRequest(userID int64, trainingID, requestID string) bool {
+	return resolve(userID, trainingID, requestID)
+}
+
+func resolve(userID int64, trainingID, requestID string) bool {
 	mu.Lock()
 	defer mu.Unlock()
-
-	k := key{
-		UserID:     userID,
-		TrainingID: trainingID,
+	k := key{UserID: userID, TrainingID: trainingID}
+	entry, ok := pending[k]
+	if !ok || (requestID != "" && entry.context.RequestID != requestID) {
+		return false
 	}
-
 	delete(pending, k)
+	entry.timer.Stop()
+	return true
 }

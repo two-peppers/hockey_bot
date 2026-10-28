@@ -20,8 +20,8 @@ type FriendJoinTraining struct {
 
 var _ Scenario = (*FriendJoinTraining)(nil)
 
-var userFriendTrainingID = make(map[int64]string)
-var userContextMessage = make(map[int64]int)
+var userFriendTrainingID = make(map[sessionKey]string)
+var userContextMessage = make(map[sessionKey]int)
 
 func NewFriendJoinTraining() *FriendJoinTraining {
 	return &FriendJoinTraining{
@@ -43,7 +43,10 @@ func NewFriendJoinTraining() *FriendJoinTraining {
 
 func askFriendName(st storage.Storage, chatID int64, userID int64, messageID int, data Data) (*Action, error) {
 	trainingID := data["id"]
-	training, _ := st.GetTrainingByID(trainingID)
+	training, err := getTraining(st, trainingID)
+	if err != nil {
+		return nil, err
+	}
 
 	player, err := st.GetPlayer(userID, training.TeamID)
 
@@ -51,10 +54,16 @@ func askFriendName(st storage.Storage, chatID int64, userID int64, messageID int
 		return nil, errors.New("player not found")
 	}
 
-	userFriendTrainingID[userID] = trainingID
-	userContextMessage[userID] = messageID
+	userFriendTrainingID[sessionKey{userID, chatID}] = trainingID
+	userContextMessage[sessionKey{userID, chatID}] = messageID
 
-	friends, _ := st.GetPlayersByTelegramID(training.TeamID, userID)
+	friends, err := st.GetPlayersByTelegramID(training.TeamID, userID)
+	if err != nil {
+		return nil, err
+	}
+	if len(friends) == 0 {
+		return nil, ErrNotFound
+	}
 	friends = friends[1:]
 
 	res := NewAction()
@@ -75,7 +84,7 @@ func askFriendName(st storage.Storage, chatID int64, userID int64, messageID int
 }
 
 func showFriendsPage(st storage.Storage, chatID int64, userID int64, messageID int, data Data) (*Action, error) {
-	training, err := st.GetTrainingByID(userFriendTrainingID[userID])
+	training, err := getTraining(st, userFriendTrainingID[sessionKey{userID, chatID}])
 	if err != nil || training == nil {
 		return nil, errors.New("training not found")
 	}
@@ -98,7 +107,7 @@ func showFriendsPage(st storage.Storage, chatID int64, userID int64, messageID i
 
 func checkFriendName(st storage.Storage, chatID int64, userID int64, messageID int, data Data) (*Action, error) {
 	user_state.AddToMessageBuffer(chatID, userID, messageID)
-	player, err := getGlobalUserPlayer(userID)
+	player, err := getGlobalUserPlayer(userID, chatID)
 
 	if err != nil || player == nil {
 		player = &domain.Player{
@@ -107,7 +116,7 @@ func checkFriendName(st storage.Storage, chatID int64, userID int64, messageID i
 		}
 	}
 
-	training, err := st.GetTrainingByID(userFriendTrainingID[userID])
+	training, err := getTraining(st, userFriendTrainingID[sessionKey{userID, chatID}])
 
 	if err != nil {
 		return nil, err
@@ -127,14 +136,14 @@ func checkFriendName(st storage.Storage, chatID int64, userID int64, messageID i
 
 	player.FullName = fullName
 	player.TeamID = training.TeamID
-	saveGlobalUserPlayer(userID, *player)
+	saveGlobalUserPlayer(userID, chatID, *player)
 	user_state.SetUserState(userID, chatID, "frgo_tr:2")
 
 	return askFriendPosition(st, chatID, userID, messageID, data)
 }
 
 func askFriendPosition(st storage.Storage, chatID int64, userID int64, messageID int, data Data) (*Action, error) {
-	player, err := getGlobalUserPlayer(userID)
+	player, err := getGlobalUserPlayer(userID, chatID)
 
 	if err != nil {
 		user_state.ClearUserState(userID, chatID)
@@ -153,7 +162,7 @@ func askFriendPosition(st storage.Storage, chatID int64, userID int64, messageID
 }
 
 func checkFriendPosition(st storage.Storage, chatID int64, userID int64, messageID int, data Data) (*Action, error) {
-	player, err := getGlobalUserPlayer(userID)
+	player, err := getGlobalUserPlayer(userID, chatID)
 
 	if err != nil {
 		user_state.ClearUserState(userID, chatID)
@@ -163,14 +172,14 @@ func checkFriendPosition(st storage.Storage, chatID int64, userID int64, message
 	position := data.Get("position")
 	player.Position = domain.PlayerPosition(position)
 
-	trainingMessageID, ok := userContextMessage[userID]
+	trainingMessageID, ok := userContextMessage[sessionKey{userID, chatID}]
 	if !ok {
 		user_state.ClearUserState(userID, chatID)
 		return nil, errors.New("trainingID not found")
 	}
 
 	if player.Position == domain.PositionGoalkeeper {
-		saveGlobalUserPlayer(userID, *player)
+		saveGlobalUserPlayer(userID, chatID, *player)
 		return askFriendGoalkeeperCommercial(st, chatID, userID, trainingMessageID, data)
 	}
 
@@ -182,7 +191,7 @@ func checkFriendPosition(st storage.Storage, chatID int64, userID int64, message
 		return nil, err
 	}
 
-	trainingID, ok := userFriendTrainingID[userID]
+	trainingID, ok := userFriendTrainingID[sessionKey{userID, chatID}]
 	if !ok {
 		user_state.ClearUserState(userID, chatID)
 		return nil, errors.New("trainingID not found")
@@ -197,7 +206,7 @@ func checkFriendPosition(st storage.Storage, chatID int64, userID int64, message
 func askFriendGoalkeeperCommercial(st storage.Storage, chatID int64, userID int64, messageID int, data Data) (*Action, error) {
 	res := NewAction()
 
-	player, err := getGlobalUserPlayer(userID)
+	player, err := getGlobalUserPlayer(userID, chatID)
 	if err != nil {
 		user_state.ClearUserState(userID, chatID)
 		return nil, err
@@ -213,7 +222,7 @@ func askFriendGoalkeeperCommercial(st storage.Storage, chatID int64, userID int6
 }
 
 func checkFriendGoalkeeperCommercial(st storage.Storage, chatID int64, userID int64, messageID int, data Data) (*Action, error) {
-	player, err := getGlobalUserPlayer(userID)
+	player, err := getGlobalUserPlayer(userID, chatID)
 	if err != nil {
 		user_state.ClearUserState(userID, chatID)
 		return nil, err
@@ -221,7 +230,7 @@ func checkFriendGoalkeeperCommercial(st storage.Storage, chatID int64, userID in
 
 	player.Commercial = data.Get("comm") == "true"
 
-	trainingMessageID, ok := userContextMessage[userID]
+	trainingMessageID, ok := userContextMessage[sessionKey{userID, chatID}]
 	if !ok {
 		user_state.ClearUserState(userID, chatID)
 		return nil, errors.New("trainingID not found")
@@ -233,7 +242,7 @@ func checkFriendGoalkeeperCommercial(st storage.Storage, chatID int64, userID in
 		return nil, err
 	}
 
-	trainingID, ok := userFriendTrainingID[userID]
+	trainingID, ok := userFriendTrainingID[sessionKey{userID, chatID}]
 	if !ok {
 		user_state.ClearUserState(userID, chatID)
 		return nil, errors.New("trainingID not found")
@@ -252,32 +261,38 @@ func confirmFriendJoinTraining(st storage.Storage, chatID int64, userID int64, m
 	trainingID := data.Get("training_id")
 
 	if len(trainingID) == 0 {
-		trainingID, exist = userFriendTrainingID[userID]
+		trainingID, exist = userFriendTrainingID[sessionKey{userID, chatID}]
 		if !exist {
 			return nil, errors.New("trainingID not set")
 		}
 	}
 
-	training, err := st.GetTrainingByID(trainingID)
+	training, err := getTraining(st, trainingID)
 	if err != nil {
 		user_state.ClearUserState(userID, chatID)
 		return nil, err
 	}
 
-	player, err := st.GetPlayerByID(data.Get("id"))
+	player, err := getOwnedPlayer(st, data.Get("id"), training.TeamID, userID)
 
 	if err != nil {
 		user_state.ClearUserState(userID, chatID)
 		return nil, err
 	}
 
-	training.AddPlayer(player)
-	st.SaveTraining(training)
-
-	messageID, exist = userContextMessage[userID]
-
+	if player == nil {
+		return nil, ErrNotFound
+	}
+	messageID, exist = userContextMessage[sessionKey{userID, chatID}]
 	if !exist {
 		return nil, errors.New("messageID not set")
+	}
+	if err := st.AddTrainingPlayer(training.ID, player.ID); err != nil {
+		return nil, err
+	}
+	training, err = getTraining(st, training.ID)
+	if err != nil {
+		return nil, err
 	}
 
 	keyboard := keyboards.TakePartKeyboard("tr", training.ID)
@@ -285,6 +300,7 @@ func confirmFriendJoinTraining(st storage.Storage, chatID int64, userID int64, m
 	editMsg.ParseMode = tgbotapi.ModeMarkdown
 	editMsg.ReplyMarkup = &keyboard
 
+	res.RefreshTrainingID = training.ID
 	res.AddEdit(&editMsg)
 	if chatID > 0 && training.Team.ChatID != nil && *training.Team.ChatID != 0 && training.TeamMessageID != 0 {
 		teamEdit := tgbotapi.NewEditMessageText(*training.Team.ChatID, training.TeamMessageID, training.String())
@@ -294,10 +310,10 @@ func confirmFriendJoinTraining(st storage.Storage, chatID int64, userID int64, m
 	}
 	res.FlushTemporary = true
 
-	delete(userContextMessage, userID)
-	delete(userFriendTrainingID, userID)
+	delete(userContextMessage, sessionKey{userID, chatID})
+	delete(userFriendTrainingID, sessionKey{userID, chatID})
 	user_state.ClearUserState(userID, chatID)
-	clearGlobalUserPlayer(userID)
+	clearGlobalUserPlayer(userID, chatID)
 
 	return res, nil
 }

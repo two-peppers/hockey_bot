@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 func (s *gormStorage) CreateTraining(training *domain.Training) error {
@@ -15,6 +16,43 @@ func (s *gormStorage) CreateTraining(training *domain.Training) error {
 		}
 		return saveTrainingPlayers(tx, training)
 	})
+}
+
+// Меняем только указанную связь, не перезаписывая прочитанный ранее состав.
+// Внутри транзакции SQLite сначала получаем блокировку записи: это также
+// сериализует выделение signup_order при нескольких соединениях с БД.
+func (s *gormStorage) AddTrainingPlayer(trainingID, playerID string) error {
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		result := tx.Model(&domain.Training{}).Where("id = ?", trainingID).
+			UpdateColumn("updated_at", time.Now())
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected == 0 {
+			return gorm.ErrRecordNotFound
+		}
+		var training domain.Training
+		if err := tx.First(&training, "id = ?", trainingID).Error; err != nil {
+			return err
+		}
+		var player domain.Player
+		if err := tx.First(&player, "id = ? AND team_id = ?", playerID, training.TeamID).Error; err != nil {
+			return err
+		}
+		var lastOrder int64
+		if err := tx.Model(&domain.TrainingPlayer{}).Where("training_id = ?", trainingID).
+			Select("COALESCE(MAX(signup_order), 0)").Scan(&lastOrder).Error; err != nil {
+			return err
+		}
+		return tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&domain.TrainingPlayer{
+			TrainingID: trainingID, PlayerID: playerID, SignupOrder: lastOrder + 1,
+		}).Error
+	})
+}
+
+func (s *gormStorage) RemoveTrainingPlayer(trainingID, playerID string) error {
+	return s.db.Where("training_id = ? AND player_id = ?", trainingID, playerID).
+		Delete(&domain.TrainingPlayer{}).Error
 }
 
 // GetTrainingById возвращает команду по UUID
@@ -38,7 +76,9 @@ func (s *gormStorage) GetTrainingByID(id string) (*domain.Training, error) {
 	return &training, nil
 }
 
-// SaveTraining сохраняет тренировку и список игроков (merge: добавляет новых, удаляет отсутствующих, не трогает approved у существующих).
+// SaveTraining заменяет тренировку и её состав целиком, сохраняя approved существующих связей.
+// Для записи и отмены участия используйте AddTrainingPlayer и RemoveTrainingPlayer,
+// чтобы не перезаписать параллельные изменения устаревшим снимком состава.
 func (s *gormStorage) SaveTraining(training *domain.Training) error {
 	return s.db.Transaction(func(tx *gorm.DB) error {
 		// Связи сохраняем явно: автоматическое сохранение many2many не

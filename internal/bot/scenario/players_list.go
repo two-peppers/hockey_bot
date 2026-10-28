@@ -32,7 +32,7 @@ func showPlayersList(st storage.Storage, chatID int64, userID int64, messageID i
 		return nil, errors.New("no team id")
 	}
 
-	team, err := st.GetTeamByID(teamID)
+	team, err := requireTeamAdmin(st, teamID, userID)
 	if err != nil {
 		return nil, err
 	}

@@ -29,7 +29,6 @@ func NewCancelReason() *CancelReason {
 }
 
 func handleReasonReply(st storage.Storage, chatID int64, userID int64, messageID int, data Data) (*Action, error) {
-	defer user_state.ClearUserState(userID, chatID)
 
 	trainingID := data.Get("training_id")
 	teamID := data.Get("team_id")
@@ -48,44 +47,43 @@ func handleReasonReply(st storage.Storage, chatID int64, userID int64, messageID
 	res.AddReply(&replyToUser)
 
 	// Уведомляем тренеров (админов команды) с текстом причины.
-	if teamID == "" && trainingID != "" {
-		// Попробуем восстановить teamID из тренировки, если его нет в data.
-		if training, err := st.GetTrainingByID(trainingID); err == nil && training != nil {
-			teamID = training.TeamID
+	if teamID == "" {
+		training, err := getTraining(st, trainingID)
+		if err != nil {
+			return nil, err
 		}
+		teamID = training.TeamID
 	}
-
-	if teamID != "" {
-		team, err := st.GetTeamByID(teamID)
-		if err == nil && team != nil {
-			// Пытаемся получить фамилию/имя игрока для красивой ссылки.
-			name := ""
-			if player, err := st.GetPlayer(userID, team.ID); err == nil && player != nil && player.FullName != "" {
-				name = player.FullName
-			}
-			if name == "" {
-				name = username
-			}
-			if name == "" {
-				name = fmt.Sprintf("Игрок %d", userID)
-			}
-
-			playerMention := fmt.Sprintf("[%s](tg://user?id=%d)", name, userID)
-			textForCoach := fmt.Sprintf("%s отменил участие в тренировке со следующим сообщением: «%s»", playerMention, reason)
-
-			for _, adminID := range team.Admins {
-				msg := tgbotapi.NewMessage(adminID, textForCoach)
-				msg.ParseMode = tgbotapi.ModeMarkdown
-				res.AddReply(&msg)
-			}
-		}
+	team, err := st.GetTeamByID(teamID)
+	if err != nil {
+		return nil, err
+	}
+	if team == nil {
+		return nil, ErrNotFound
+	}
+	player, err := st.GetPlayer(userID, team.ID)
+	if err != nil {
+		return nil, err
+	}
+	name := username
+	if player != nil && player.FullName != "" {
+		name = player.FullName
+	}
+	playerMention := fmt.Sprintf("[%s](tg://user?id=%d)", name, userID)
+	textForCoach := fmt.Sprintf("%s отменил участие в тренировке со следующим сообщением: «%s»", playerMention, reason)
+	for _, adminID := range team.Admins {
+		msg := tgbotapi.NewMessage(adminID, textForCoach)
+		msg.ParseMode = tgbotapi.ModeMarkdown
+		res.AddReply(&msg)
 	}
 
 	// Пользователь ответил — больше не нужно срабатывать по таймауту.
 	if trainingID != "" {
-		pendingreply.Resolve(userID, trainingID)
+		if !pendingreply.ResolveRequest(userID, trainingID, data.Get("request_id")) {
+			return nil, nil // таймер или другой ответ уже завершил это ожидание
+		}
 	}
 
+	user_state.ClearUserState(userID, chatID)
 	return res, nil
 }
-

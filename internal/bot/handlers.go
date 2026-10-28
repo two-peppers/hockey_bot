@@ -12,31 +12,6 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
-var globalMessagesToDelete = make(map[int64][]int)
-
-func addMessageToDelete(userID int64, messageID int) {
-	_, exists := globalMessagesToDelete[userID]
-
-	if !exists {
-		globalMessagesToDelete[userID] = make([]int, 0)
-	}
-
-	globalMessagesToDelete[userID] = append(globalMessagesToDelete[userID], messageID)
-}
-
-func deleteMessagesFromChat(bot *tgbotapi.BotAPI, chatID int64, userID int64) {
-	messages, exists := globalMessagesToDelete[userID]
-
-	if !exists {
-		return
-	}
-
-	for _, messageID := range messages {
-		del := tgbotapi.NewDeleteMessage(chatID, messageID)
-		bot.Send(del)
-	}
-}
-
 // HandleUpdate - главный обработчик всех обновлений от Telegram
 // Разделяет логику: команды /start, callback от кнопок
 func HandleUpdate(bot *tgbotapi.BotAPI, update tgbotapi.Update, store storage.Storage) {
@@ -60,6 +35,9 @@ func HandleUpdate(bot *tgbotapi.BotAPI, update tgbotapi.Update, store storage.St
 
 // handleMessage обрабатывает текстовые сообщения
 func handleMessage(bot *tgbotapi.BotAPI, msg tgbotapi.Message, store storage.Storage) {
+	if msg.Chat == nil || msg.From == nil {
+		return
+	}
 	chatID := msg.Chat.ID
 	senderID := msg.From.ID
 	messageID := msg.MessageID
@@ -76,8 +54,12 @@ func handleMessage(bot *tgbotapi.BotAPI, msg tgbotapi.Message, store storage.Sto
 		newChatID := msg.MigrateToChatID
 
 		team, err := store.GetTeamByChatID(chatID)
-		if err == nil {
-			store.UpdateTeamChatID(team.ID, newChatID)
+		if err == nil && team != nil {
+			if err := store.UpdateTeamChatID(team.ID, newChatID); err != nil {
+				log.Printf("failed to migrate team chat: %v", err)
+			}
+		} else if err != nil {
+			log.Printf("failed to load team for chat migration: %v", err)
 		}
 	}
 
@@ -85,7 +67,7 @@ func handleMessage(bot *tgbotapi.BotAPI, msg tgbotapi.Message, store storage.Sto
 	if strings.HasPrefix(text, "/start") {
 		if chatID < 0 {
 			delMsg := tgbotapi.NewDeleteMessage(chatID, messageID)
-			bot.Send(delMsg)
+			requestLogged(bot, delMsg, "delete command")
 			return
 		}
 		msg := tgbotapi.NewMessage(chatID, "Рад тебя видеть! Это главное меню бота\n\nВыбери действие:")
@@ -100,7 +82,7 @@ func handleMessage(bot *tgbotapi.BotAPI, msg tgbotapi.Message, store storage.Sto
 	if strings.HasPrefix(text, "/trainings") {
 		if chatID < 0 {
 			delMsg := tgbotapi.NewDeleteMessage(chatID, messageID)
-			bot.Send(delMsg)
+			requestLogged(bot, delMsg, "delete command")
 			return
 		}
 		user_state.SetUserState(senderID, chatID, "trainings:0")
@@ -117,11 +99,14 @@ func handleMessage(bot *tgbotapi.BotAPI, msg tgbotapi.Message, store storage.Sto
 		userName = "Друг"
 	}
 
-	executeRoute(bot, store, chatID, senderID, messageID, msg.From.UserName, text)
+	executeRoute(bot, store, chatID, senderID, messageID, userName, text)
 }
 
 // handleCallback обрабатывает нажатия inline кнопок
 func handleCallback(bot *tgbotapi.BotAPI, callback tgbotapi.CallbackQuery, store storage.Storage) {
+	if callback.Message == nil || callback.Message.Chat == nil || callback.From == nil {
+		return
+	}
 	chatID := callback.Message.Chat.ID
 	senderID := callback.From.ID
 	data := callback.Data
@@ -129,6 +114,11 @@ func handleCallback(bot *tgbotapi.BotAPI, callback tgbotapi.CallbackQuery, store
 
 	log.Printf("Callback from %d in chat %d: %s", senderID, chatID, data)
 
+	if _, _, _, err := parseRoute(data); err != nil {
+		log.Printf("invalid callback from user %d: %v", senderID, err)
+		requestLogged(bot, tgbotapi.CallbackConfig{CallbackQueryID: callback.ID, Text: "Кнопка устарела. Открой меню заново.", ShowAlert: true}, "answer invalid callback")
+		return
+	}
 	user_state.SetUserState(senderID, chatID, data)
 
 	userName := callback.From.UserName

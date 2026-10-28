@@ -31,3 +31,15 @@ func ClearUserState(userID int64, chatID int64) {
 func buildKey(userID int64, chatID int64) string {
 	return fmt.Sprintf("%d_%d", userID, chatID)
 }
+
+// ClearUserStateIf не удаляет новый диалог при завершении старого запроса.
+func ClearUserStateIf(userID, chatID int64, expected string) bool {
+	stateMu.Lock()
+	defer stateMu.Unlock()
+	key := buildKey(userID, chatID)
+	if globalUserStates[key] != expected {
+		return false
+	}
+	delete(globalUserStates, key)
+	return true
+}

@@ -63,7 +63,7 @@ func selectUpcomingTraining(st storage.Storage, chatID int64, userID int64, mess
 		return res, nil
 	}
 
-	training, err := st.GetTrainingByID(trainingID)
+	training, err := getTraining(st, trainingID)
 	if err != nil {
 		return nil, err
 	}
@@ -78,6 +78,7 @@ func selectUpcomingTraining(st storage.Storage, chatID int64, userID int64, mess
 	editMsg := tgbotapi.NewEditMessageText(chatID, messageID, training.String())
 	editMsg.ParseMode = tgbotapi.ModeMarkdown
 	editMsg.ReplyMarkup = &keyboard
+	res.RefreshTrainingID = training.ID
 	res.AddEdit(&editMsg)
 	user_state.ClearUserState(userID, chatID)
 

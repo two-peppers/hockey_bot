@@ -18,8 +18,8 @@ type CancelFriendJoinTraining struct {
 
 var _ Scenario = (*CancelFriendJoinTraining)(nil)
 
-var userCancelFriendTrainingID = make(map[int64]string)
-var userCancelContextMessage = make(map[int64]int)
+var userCancelFriendTrainingID = make(map[sessionKey]string)
+var userCancelContextMessage = make(map[sessionKey]int)
 
 func NewCancelFriendJoinTraining() *CancelFriendJoinTraining {
 	return &CancelFriendJoinTraining{
@@ -35,12 +35,15 @@ func NewCancelFriendJoinTraining() *CancelFriendJoinTraining {
 }
 
 func askFriendNameForCancel(st storage.Storage, chatID int64, userID int64, messageID int, data Data) (*Action, error) {
-	userCancelContextMessage[userID] = messageID
+	userCancelContextMessage[sessionKey{userID, chatID}] = messageID
 
 	trainingID := data["id"]
-	training, _ := st.GetTrainingByID(trainingID)
+	training, err := getTraining(st, trainingID)
+	if err != nil {
+		return nil, err
+	}
 
-	userCancelFriendTrainingID[userID] = trainingID
+	userCancelFriendTrainingID[sessionKey{userID, chatID}] = trainingID
 
 	friendsInTraining, err := getFriendsInTraining(st, training, userID)
 	if err != nil || len(friendsInTraining) == 0 {
@@ -60,7 +63,7 @@ func askFriendNameForCancel(st storage.Storage, chatID int64, userID int64, mess
 }
 
 func showCancelFriendsPage(st storage.Storage, chatID int64, userID int64, messageID int, data Data) (*Action, error) {
-	training, err := st.GetTrainingByID(userCancelFriendTrainingID[userID])
+	training, err := getTraining(st, userCancelFriendTrainingID[sessionKey{userID, chatID}])
 	if err != nil || training == nil {
 		return nil, errors.New("training not found")
 	}
@@ -96,22 +99,34 @@ func getFriendsInTraining(st storage.Storage, training *domain.Training, userID 
 }
 
 func confirmFriendCancelTraining(st storage.Storage, chatID int64, userID int64, messageID int, data Data) (*Action, error) {
-	trainingID := userCancelFriendTrainingID[userID]
+	trainingID := userCancelFriendTrainingID[sessionKey{userID, chatID}]
 	playerID := data["id"]
 
-	training, _ := st.GetTrainingByID(trainingID)
-	player, _ := st.GetPlayerByID(playerID)
+	training, err := getTraining(st, trainingID)
+	if err != nil {
+		return nil, err
+	}
+	player, err := getOwnedPlayer(st, playerID, training.TeamID, userID)
+	if err != nil {
+		return nil, err
+	}
 
-	training.RemovePlayer(player)
-	st.SaveTraining(training)
+	if err := st.RemoveTrainingPlayer(training.ID, player.ID); err != nil {
+		return nil, err
+	}
+	training, err = getTraining(st, training.ID)
+	if err != nil {
+		return nil, err
+	}
 
 	res := NewAction()
 
 	keyboard := keyboards.TakePartKeyboard("tr", training.ID)
-	editMsg := tgbotapi.NewEditMessageText(chatID, userCancelContextMessage[userID], training.String())
+	editMsg := tgbotapi.NewEditMessageText(chatID, userCancelContextMessage[sessionKey{userID, chatID}], training.String())
 	editMsg.ParseMode = tgbotapi.ModeMarkdown
 	editMsg.ReplyMarkup = &keyboard
 
+	res.RefreshTrainingID = training.ID
 	res.AddEdit(&editMsg)
 	if chatID > 0 && training.Team.ChatID != nil && *training.Team.ChatID != 0 && training.TeamMessageID != 0 {
 		teamEdit := tgbotapi.NewEditMessageText(*training.Team.ChatID, training.TeamMessageID, training.String())
@@ -121,6 +136,8 @@ func confirmFriendCancelTraining(st storage.Storage, chatID int64, userID int64,
 	}
 	res.FlushTemporary = true
 
+	delete(userCancelFriendTrainingID, sessionKey{userID, chatID})
+	delete(userCancelContextMessage, sessionKey{userID, chatID})
 	user_state.ClearUserState(userID, chatID)
 
 	return res, nil

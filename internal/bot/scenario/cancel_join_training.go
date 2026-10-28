@@ -10,6 +10,7 @@ import (
 	"hockey_bot/internal/storage"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"github.com/google/uuid"
 )
 
 type CancelJoinTraining struct {
@@ -33,10 +34,10 @@ func confirmTakePartTrainingCancel(st storage.Storage, chatID int64, userID int6
 	// Кнопка запускает одношаговый сценарий. Если не очистить его состояние,
 	// следующее обычное сообщение пользователя в этом чате повторно выполнит
 	// отмену и снова отправит запрос причины в личку.
-	defer user_state.ClearUserState(userID, chatID)
+	user_state.ClearUserState(userID, chatID)
 
 	trainingID := data.Get("id")
-	training, err := st.GetTrainingByID(trainingID)
+	training, err := getTraining(st, trainingID)
 	if err != nil {
 		return nil, err
 	}
@@ -47,8 +48,13 @@ func confirmTakePartTrainingCancel(st storage.Storage, chatID int64, userID int6
 		return nil, errors.New("no player for user")
 	}
 
-	training.RemovePlayer(player)
-	st.SaveTraining(training)
+	if err := st.RemoveTrainingPlayer(training.ID, player.ID); err != nil {
+		return nil, err
+	}
+	training, err = getTraining(st, training.ID)
+	if err != nil {
+		return nil, err
+	}
 
 	username := data.Get("username")
 	if username == "" {
@@ -56,15 +62,19 @@ func confirmTakePartTrainingCancel(st storage.Storage, chatID int64, userID int6
 	}
 
 	// Готовим данные для сценария причины отмены в личном чате.
+	requestID := uuid.NewString()
 	ctxData := make(Data)
+	ctxData.Set("request_id", requestID)
 	ctxData.Set("training_id", training.ID)
 	ctxData.Set("team_id", training.TeamID)
 	ctxData.Set("username", username)
 
-	if raw, err := json.Marshal(ctxData); err == nil {
-		// В личном чате (chatID = userID) запускаем сценарий cancel_reason.
-		user_state.SetUserState(userID, userID, fmt.Sprintf("cancel_reason:0:%s", string(raw)))
+	raw, err := json.Marshal(ctxData)
+	if err != nil {
+		return nil, err
 	}
+	replyState := fmt.Sprintf("cancel_reason:0:%s", raw)
+	user_state.SetUserState(userID, userID, replyState)
 
 	keyboard := keyboards.TakePartKeyboard("tr", training.ID)
 	editMsg := tgbotapi.NewEditMessageText(chatID, messageID, training.String())
@@ -72,6 +82,7 @@ func confirmTakePartTrainingCancel(st storage.Storage, chatID int64, userID int6
 	editMsg.ReplyMarkup = &keyboard
 
 	res := NewAction()
+	res.RefreshTrainingID = training.ID
 	res.AddEdit(&editMsg)
 	if chatID > 0 && training.Team.ChatID != nil && *training.Team.ChatID != 0 && training.TeamMessageID != 0 {
 		teamEdit := tgbotapi.NewEditMessageText(*training.Team.ChatID, training.TeamMessageID, training.String())
@@ -90,6 +101,8 @@ func confirmTakePartTrainingCancel(st storage.Storage, chatID int64, userID int6
 
 	// Настраиваем контекст ожидания ответа для последующего трекинга.
 	ctx := &pendingreply.PendingReplyContext{
+		RequestID:      requestID,
+		ReplyState:     replyState,
 		UserID:         userID,
 		Username:       username,
 		PlayerFullName: player.FullName,
